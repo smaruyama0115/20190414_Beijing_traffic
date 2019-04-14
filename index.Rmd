@@ -558,11 +558,73 @@ for(i in 1:300){
 plot_queries_od
 ```
 
-## 移動経路の可視化(mode別)
+## 移動経路の可視化(click_mode別)
 
-作成中。。。
+- ランダムにサンプルした移動経路を、click_mode別に色分けして地図上にプロットする。
+- 拡大版は[こちら](./map/od_mode_map.html)
+
+```{r}
+# 移動経路をclick_mode別にプロットする
+
+# data_queriesとdata_clicksを結合
+data_queries_mode <-
+  data_queries %>% 
+  inner_join(data_clicks,by="sid")
+
+num_lines = 1000
+
+# 移動経路の緯度経度(念の為countを出しておく)
+data_queries_od_mode <-
+  data_queries_mode %>% 
+  group_by(o,d,click_mode) %>% 
+  summarise(count=n()) %>%
+  ungroup() %>% 
+  arrange(desc(count)) %>% 
+  separate(col=o,into=c("o_lng","o_lat"),sep=",") %>% 
+  separate(col=d,into=c("d_lng","d_lat"),sep=",") %>% 
+  mutate(
+    o_lng=o_lng %>% as.numeric,
+    o_lat=o_lat %>% as.numeric,
+    d_lng=d_lng %>% as.numeric,
+    d_lat=d_lat %>% as.numeric
+  ) %>% 
+  mutate(log10_count = log10(count)) %>%
+  sample_n(size=num_lines)
+
+pal <- colorFactor(palette="Spectral",domain=data_queries_od_mode$click_mode)
+
+plot_queries_od_mode <-
+  leaflet() %>% 
+  addTiles() %>% 
+  addLegend(position='topright', pal=pal, values=data_queries_od_mode$click_mode) %>% 
+  addScaleBar(position="bottomleft",options = scaleBarOptions(imperial=FALSE))
+
+for(i in 1:num_lines){
+  mode <- data_queries_od_mode %>% filter(row_number() == i) %>% .$click_mode
+  o_p  <- data_queries_od_mode %>% filter(row_number() == i) %>% select(o_lng,o_lat,click_mode,log10_count) %>% rename(lng=o_lng,lat=o_lat)
+  d_p  <- data_queries_od_mode %>% filter(row_number() == i) %>% select(d_lng,d_lat,click_mode,log10_count) %>% rename(lng=d_lng,lat=d_lat)
+  od_p <- union(o_p,d_p)
+  plot_queries_od_mode %<>% addPolylines(lng=od_p$lng,lat=od_p$lat,color=pal(od_p$click_mode),weight="3",group=mode %>% as.character)
+}
+
+plot_queries_od_mode %>%
+  addLayersControl(
+    overlayGroups=1:11 %>% as.character,
+    options=layersControlOptions(collapsed = FALSE)
+  )
+```
 
 # その他
+
+## データの特徴
+
+- 同じtransport_modeとなる複数のplanが提示されるsidも存在する。
+    - 以下の例では、transport_mode 1 の plan が2種類レコメンドされている。
+
+```{r}
+data_plans %>% filter(sid==1081113)
+```
+
 
 ## train・test両方に出てくるpid
 
@@ -581,7 +643,7 @@ plot_queries_od
 
 ## 北京の気候
 
-- 気象庁のデータベースから、北京の2018/11/01~2018/12/31の気候データを取得
+- 気象庁のデータベースから、北京の2018/10/01~2018/12/31の気候データを取得
     - 参考 : [気象庁「地点別データ・グラフ   (世界の天候データツール（ClimatView 日別値））」](https://www.data.jma.go.jp/gmd/cpd/monitor/dailyview/graph_mkhtml_d.php?&n=54511&p=62&s=1&r=1&y=2018&m=12&d=31&e=0&k=0)
 
 ```{r}
@@ -605,7 +667,7 @@ climate %>%
   geom_line()
 ```
 
-- 当然、11月より12月の平均気温のほうが低い
+- 当然、年末になるに連れて平均気温が低くなる
 - 徒歩や自転車で移動する人の割合に影響はあるか？要確認。
 
 ### 降水のあった日
@@ -617,5 +679,5 @@ climate %>%
   print
 ```
 
-- 11月4日と12月1日のみ雨が降っている
+- 10月15日, 11月4日, 12月1日のみ雨が降っている
 - 行動パターンに変化はないか？要確認。
