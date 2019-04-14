@@ -1,0 +1,621 @@
+---
+title: "Regular ML レポート"
+author: "smaruyama0115"
+date: "2019/4/15"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 2
+    code_folding: hide
+    md_extensions: -ascii_identifiers
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  comment="#",
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r}
+# ライブラリの読み込み
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(Hmisc)
+library(DataExplorer)
+library(lubridate)
+library(data.table)
+library(leaflet)
+library(DT)
+
+# tibbleのprintに関する設定
+print.tbl_df <- print.data.frame
+
+# パッケージの優先順位変更
+unload_package <- function(pkg_name) {
+  packages <- Filter(function(x) stringr::str_detect(x, "^package:"), search())
+  packages <- Map(function(x) stringr::str_replace(x, "^package:", ""), packages)
+  packages <- unlist(unname(packages))
+  
+  if(!(pkg_name %in% packages)) {
+    return(pkg_name)
+  }
+  
+  result_packages <- pkg_name
+  while(TRUE) {
+    tryCatch({
+      detach(paste0("package:", pkg_name), character.only = TRUE)
+      break
+    }, error = function(e) {
+      required_package <- stringr::str_match(e$message, pattern = "required by ‘(.+?)’")[1, 2]
+      required_packages <- unload_package(required_package)
+      result_packages <<- c(result_packages, required_packages)
+    })
+  }
+  unique(result_packages)
+}
+
+prior_package <- function(pkg_name) {
+  pkg_name <- as.character(substitute(pkg_name))
+  pkg_names <- unload_package(pkg_name)
+  for (pkg_name in pkg_names) {
+    suppressPackageStartupMessages(library(pkg_name, character.only = TRUE))
+  }
+}
+
+prior_package(dplyr)
+```
+
+# このレポートについて
+
+- このレポートでは、KDD CUP 2019 (Regular ML)のデータについて、以下の確認を行った結果を記載しています。
+
+    - **事前知識**  
+    データの解析に役に立ちそうな背景知識についてまとめています。  
+    具体的には、実際にBaidu Mapアプリの使った結果分かったことや、  
+    北京の交通事情についてのネット上の記載をまとめています。
+
+    - **transport_modeの推定**  
+    transport_modeに関連するデータを探索的に解析し、  
+    transport_modeがどの交通手段に対応しているか(ex:mode1はバスに対応している、等々)推定を行います。
+
+    - **目的地・移動経路の可視化**  
+    ユーザーがよく目的地として設定する地点や、  
+    頻繁に検索される移動経路の可視化を行います。
+
+- このレポートの内容は、金曜日までに適宜修正していく可能性があります。
+
+# 事前知識
+
+この章では、実際にBaidu Mapアプリの使った結果分かったことや、<br>
+北京の交通事情についてのネット上の記載をまとめています。
+
+## transport mode の詳細
+
+- description 内で、transport mode は11種類あることは記載されているが、具体的にどのような輸送手段なのかは書かれていない。
+- そこで、実際に Baidu Map をインストールし、どのような transport mode が出てくるかを確認しました。
+- アプリ上で確認できた移動手段は以下の12種類
+    - 徒歩
+    - 自転車
+    - 車
+    - バス
+    - タクシー(出租车)
+    - 配車アプリ(快车、中国版Uberの滴滴快车というサービスを使う)
+    - 地下鉄
+    - バス & 自転車
+    - バス & 地下鉄
+    - 自転車 & 地下鉄
+    - バス & タクシー
+    - 地下鉄 & タクシー
+    
+- この内の11種類がtransport modeとなっている？
+
+### 中国のシェアサイクル事情
+
+- 「バス & 自転車」のように、自転車と他の交通機関を併用するパターンもあるが、これは中国でシェアサイクルが普及しているため。(自転車を担いでバスに乗っているわけでは無い)
+- 18年5月時点で、北京内で190万台、全国で3000万台のシェアサイクル用自転車が設置されており、全国利用者は17年末で2億人を突破。
+- 中国のシェアサイクルはほぼどこでも乗り捨てて構わない
+    - 日本のシェアサイクルの「ポート」のように決められた場所が無い。
+    - 各自転車にGPSが設定されており、どこに自転車があるかをアプリ上で確認できる。
+- ただし、設置台数に対してメンテナンス費が足りず、故障しているものや汚れの激しいものもよくあるとのこと。
+
+- 参考：
+    - [Business Leaders Square Wisdom「中国のシェア自転車はなぜ失速したのか」](https://wisdom.nec.com/ja/business/2018083001/index.html)
+
+## 交通手段の利用料金
+
+- 自転車
+    - シェアサイクルの場合、30分 100~200RMB程度
+- バス
+    - 初乗り200RMB(10kmまで)
+    - 10kmを超えると、5kmごとに運賃が100RMBずつ加算。
+- 地下鉄
+    - 初乗り300RMB(6kmまで)
+    -  6~12km : 400RMB
+    - 12~22km : 500RMB
+    - 22~32km : 600RMB
+    - 32km以上は20kmごとに100RMB加算(最大1000RMB)
+    - ただし空港線は2500RMB、八達嶺長城を経由するS2線は 500 or 600 RMB
+- タクシー
+    - 初乗り1300RMB(3kmまで)
+    - 3kmを超えると1km毎に230RMB加算
+    - 燃油サーチャージとして、料金メータと別に+100RMB加算
+    - 朝夕のラッシュ時に12km/h以下の低速走行の渋滞となった場合、5分毎に460RMD加算
+    - 23~翌5時の深夜料金では20%割増し
+
+- 参考：
+    - [All About「北京のタクシー・地下鉄・バス！知っておきたい交通事情」](https://allabout.co.jp/gm/gc/22785/)
+    - [Business Insider JAPAN「中国シェア自転車ofoが破産リスト掲載。モバイクは運営維持へ値上げ」](https://www.businessinsider.jp/post-188756)
+    - [Guanxi Times「中国北京の交通事情（バス・地下鉄・タクシー）と料金」](https://wakuwork.jp/archives/3198)
+    - [タビナカマガジン「大都市《北京》の移動手段をマスター！地下鉄・バス・タクシーまとめ」](https://tabinaka.co.jp/magazine/articles/48655)
+
+```{r}
+# あらかじめ距離に対する各交通方法の料金を算出する関数を作成する。
+
+# 距離に対するバスの料金を算出する関数
+f_bus_price <-
+  function(distance){
+    price =
+      ifelse(
+        distance<=10000,
+        200,
+        100*ceiling(distance/5000)
+        )
+    return(price)
+  }
+
+# 距離に対するタクシーの料金を算出する関数
+f_taxi_price <-
+  function(distance){
+    price =
+      ifelse(
+        distance<=3000,
+        1400,
+        230*ceiling((distance-3000)/1000)+1400
+        )
+    return(price)
+  }
+
+# 距離に対する地下鉄の料金を算出する関数
+f_subway_price <-
+  function(distance){
+    price =
+      map_dbl(
+        .x = distance,
+        .f = ~
+          if(.x<=6000){
+            return(300)
+          }else if(.x<=12000){
+            return(400)
+          }else if(.x<=22000){
+            return(500)
+          }else if(.x<=32000){
+            return(600)
+          }else{
+            min(100*ceiling((.x-32000)/20000)+600,1000)
+          }
+      )
+    return(price)
+  }
+```
+
+# transport_mode の推定
+
+この章では、transport_modeに関連するデータを探索的に解析し、<br>
+transport_modeがどの交通手段に対応しているか推定を行います。
+
+```{r}
+# #train_plans(レコメンド情報)の読み込み
+#data_plans <- read_csv("data_set_phase1/train_plans.csv")
+# 
+# #plansを処理しやすい形に変形
+# 
+# distance       <- data_plans$plans %>% str_extract_all("\"distance\":\\s\\d*")       %>% map(~str_remove(.,"\"distance\":\\s"))       %>% map(as.integer)
+# price          <- data_plans$plans %>% str_extract_all("\"price\":\\s\\d*")          %>% map(~str_remove(.,"\"price\":\\s"))          %>% map(as.integer)
+# eta            <- data_plans$plans %>% str_extract_all("\"eta\":\\s\\d*")            %>% map(~str_remove(.,"\"eta\":\\s"))            %>% map(as.integer)
+# transport_mode <- data_plans$plans %>% str_extract_all("\"transport_mode\":\\s\\d*") %>% map(~str_remove(.,"\"transport_mode\":\\s")) %>% map(as.integer)
+# 
+# df_plans<-
+#   pmap(
+#     .l = list(distance,price,eta,transport_mode),
+#     .f = ~data.frame(distance = ..1, price = ..2, eta = ..3, transport_mode = ..4)
+#   ) %>% 
+#   map(~mutate(.,order = row_number()))
+# 
+# data_plans %<>%
+#   select(-plans) %>% 
+#   mutate(plan = df_plans) %>% 
+#   unnest(plan)
+
+# 前処理が重かったので念の為保存しておく
+#data_plans %>% write_csv(path = "data_set_phase1/train_plans_r2.csv")
+
+# train_plans(レコメンド情報), train_clicks(ユーザーの選択したtransport_mode)の読み込み----
+data_plans  <- fread("data_set_phase1/train_plans_r2.csv", stringsAsFactors=FALSE, sep=",")
+data_clicks <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE, sep=",")
+
+#data_t_plans のplan_timeのフォーマットをなおす
+data_plans %<>% mutate(plan_time = ymd_hms(plan_time))
+
+# transport_modeをfactorに変換
+data_plans %<>% mutate(transport_mode = transport_mode %>% as.factor)
+data_clicks  %<>% mutate(click_mode = click_mode %>% as.factor)
+
+# plan_timeの時間と、深夜フラグの追加
+data_plans %<>% 
+  mutate(hour = hour(plan_time)) %>% 
+  mutate(flag_midnight = ifelse(hour<=4|hour>=23,1,0))
+
+data_clicks %<>% 
+  mutate(click_hour = hour(click_time)) %>% 
+  mutate(flag_click_midnight = ifelse(click_hour<=4|click_hour>=23,1,0))
+```
+
+## transport_modeの出現回数
+
+### plansのtransport_mode
+
+```{r}
+data_plans %>% 
+  ggplot(
+    aes(x=transport_mode %>% as.factor,fill=transport_mode)
+  ) +
+  geom_bar()
+```
+
+### clicksのtransport_mode
+
+```{r}
+data_clicks %>% 
+  ggplot(
+    aes(x=click_mode %>% as.factor,fill=click_mode)
+  ) +
+  geom_bar()
+```
+
+### コメント
+
+- 2 -> 7 -> 1 -> 9 -> 5 -> 3 の順でクリックされる。
+- 3,4,6はレコメンドされてもクリックされにくい。
+
+## 時間別transport_modeの割合
+
+### plans
+
+```{r}
+data_plans %>%
+  ggplot(
+    aes(x=hour %>% as.factor,fill=transport_mode)
+  ) +
+  geom_bar(position="fill")
+```
+
+### clicks
+
+```{r}
+data_clicks %>%
+  ggplot(
+    aes(x=click_hour %>% as.factor, fill=click_mode)
+  ) +
+  geom_bar(position="fill")
+```
+
+### コメント
+
+- 1,3,4,8,10,11は深夜にclicksの割合が大きくなる
+- 2,5は深夜にclicksの割合が小さくなる
+
+## plans : priceのヒストグラム
+```{r}
+data_plans %>% 
+  ggplot(
+    aes(
+      x = price
+    )
+  ) + 
+  geom_histogram() +
+  facet_wrap(~ transport_mode,ncol=3,scales="free")
+```
+
+### コメント
+
+- 3,5,6 はpriceが常にNAのため、徒歩 or 自転車 or 車
+- 料金が群を抜いて高いのは4
+
+## plans : eta vs distance
+
+```{r}
+# densityとetaの関係
+data_plans %>%
+  filter(!is.na(distance),!is.na(eta)) %>% 
+  sample_n(size=100000) %>% 
+  ggplot(
+    aes(
+      x = eta,
+      y = distance
+    )
+  ) + 
+  geom_point() +
+  facet_wrap(~ transport_mode,ncol=3)
+```
+
+### コメント
+
+- priceの表示がないmode(3,5,6)で比べると、速度は 3 -> 6 -> 5 の順
+    - よって、3 = 車, 5 = 徒歩, 6 = 自転車 であることが確定。
+
+## plans : distance vs price
+
+```{r}
+# densityとpriceの関係(スケールフリー)
+data_plans %>%
+  filter(!is.na(distance),!is.na(price)) %>% 
+  sample_n(size=100000) %>% 
+  ggplot(
+    aes(
+      x = distance,
+      y = price
+    )
+  ) + 
+  geom_point() +
+  facet_wrap(~ transport_mode,scales="free") +
+  stat_function(fun=f_bus_price,color="red") +
+  stat_function(fun=f_subway_price,color="green")
+```
+
+### コメント
+- 赤線：ネットで調べたバスの料金
+- 緑線：ネットで調べた地下鉄の料金
+- 1,7,11はバスが、2,9は地下鉄が関係ありそうなことがわかる。
+
+## mode1, 7, 11 詳細
+
+### distance vs price
+
+```{r}
+data_plans %>%
+  filter(transport_mode %in% c(1,7,11)) %>%
+  sample_n(size=100000) %>% 
+  ggplot(
+    aes(
+      x = distance,
+      y = price
+    )
+  ) +
+  geom_point() +
+  facet_wrap(~transport_mode,ncol=1) +
+  stat_function(fun = f_bus_price,color="red") +
+  stat_function(fun = f_subway_price,color="green") +
+  xlim(0,150000) +
+  ylim(0,5000)
+```
+
+### コメント
+- 赤線：ネットで調べたバスの料金
+- 緑線：ネットで調べた地下鉄の料金
+
+- modeの出現回数からすると、mode1 or mode7 がバスのみ利用と推測。
+- mode7 はバス料金と地下鉄料金の中間の料金となっているため、バス&地下鉄利用と推測
+- mode11はバス&タクシーにしては料金が安すぎるため、消去法でバス&自転車と推測
+- よってmode1 = バス, mode7 = バス&地下鉄, mode11 = バス&自転車 か？
+
+## mode2, 9 詳細
+
+### distance vs price
+
+```{r}
+data_plans %>%
+  filter(transport_mode %in% c(2,9)) %>%
+  sample_n(size=100000) %>% 
+  ggplot(
+    aes(
+      x = distance,
+      y = price
+    )
+  ) +
+  geom_point() +
+  facet_wrap(~transport_mode,ncol=1) +
+  stat_function(fun = f_subway_price,color="green")
+```
+
+### コメント
+- 緑線：ネットで調べた地下鉄の料金
+- mode2 は出現回数も多いため、地下鉄のみ利用と推測。
+- mode9 は mode2 と比較して100RMD高いだけのことが多いため、レンタルサイクル&地下鉄利用と推測
+    - レンタルサイクルの最低使用料金が100RMDのため
+
+## mode4 詳細
+
+### mode別 distance vs price (+タクシー料金)
+
+```{r}
+# densityとpriceの関係(スケールフリー)
+data_plans %>%
+  filter(!is.na(distance),!is.na(price)) %>% 
+  sample_n(size=100000) %>% 
+  ggplot(
+    aes(
+      x = distance,
+      y = price
+    )
+  ) + 
+  geom_point() +
+  facet_wrap(~ transport_mode,scales="free") +
+  stat_function(fun=f_taxi_price,color="blue")
+```
+
+### コメント
+
+- 青線：ネットで調べたタクシーの料金
+- 青線ともっとも当てはまりの良いmode 4がタクシーのみ利用と推測。
+
+## mode8, 10 について
+
+- よく分からないため飛ばす。
+
+## transport_mode 推定結果まとめ
+
+|mode|推測結果|根拠|
+|:---------:|:--------------:|--------------------------------------------------------------------------------|
+|   1|    バス|・ネットで調べたバス料金と当てはまりが良い<br>・clicksの出現回数が多い|
+|   2|  地下鉄|・ネットで調べた地下鉄料金と当てはまりが良い<br>・clicksの出現回数が多い|
+|   3|      車|・priceがないmodeの中で最も移動速度が早い|
+|   4|タクシー|・最も料金が高い<br>・ネットで調べたタクシー料金と最も当てはまりが良い|
+|   5|    徒歩|・priceがないmodeの中で最も移動速度が遅い|
+|   6|  自転車|・priceがないmodeの中で二番目に移動速度が早い|
+|   7|バス&地下鉄|・ネットで調べたバス料金と当てはまりが良い<br>・バス料金と地下鉄料金の中間となっているplansが多い|
+|   8|不明|・(地下鉄&タクシー) or (バス&タクシー) or (配車アプリ)のどれかか？|
+|   9|地下鉄&自転車|・ネットで調べた地下鉄料金+100RMB程度となっていることが多い|
+|  10|不明|・(地下鉄&タクシー) or (バス&タクシー) or (配車アプリ)のどれかか？|
+|  11|バス&自転車|・ネットで調べたバス料金と当てはまりが良い<br>・バスのみ利用 or バス&地下鉄は他のmodeに割り当てられていると推測<br>・バス&タクシーにしては料金が高すぎるので、消去法でバス&自転車と推測|
+
+# 目的地・移動経路の可視化
+この章では、ユーザーがよく目的地として設定する地点や、  
+頻繁に検索される移動経路の可視化を行います。
+
+## 目的地の可視化
+
+- 目的地として設定されている緯度経度を、頻度に応じて色分けして地図上にプロットする。
+- 拡大版は[こちら](./map/d_map.html)
+
+```{r}
+# train_queries の読み込み----
+data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
+
+# 目的地の緯度経度ごとのカウント数
+data_queries_d <-
+  data_queries %>% 
+  group_by(d) %>% 
+  summarise(count=n()) %>%
+  ungroup() %>% 
+  arrange(desc(count)) %>% 
+  separate(col=d,into=c("lng","lat"),sep=",") %>% 
+  mutate(lng=lng %>% as.numeric,lat=lat %>% as.numeric) %>% 
+  mutate(log10_count = log10(count))
+
+#カウント別カラー用のパレットの作成
+pal_d <- colorNumeric(palette="Spectral", domain=data_queries_d$log10_count, reverse=TRUE)
+
+# 地図の作成
+data_queries_d %>% 
+  leaflet() %>% 
+  addTiles() %>% 
+  addCircles(lng=~lng,lat=~lat,color=~pal_d(log10_count),radius=500,stroke=FALSE,fillOpacity = 0.6) %>% 
+  addLegend(position='topright', pal=pal_d, values=~log10_count) %>% 
+  addScaleBar(position="bottomleft",options = scaleBarOptions(imperial=FALSE))
+```
+
+## 移動経路の可視化
+
+- 頻繁に検索される移動経路上位300本について、  
+頻度に応じて色分けして地図上にプロットする。
+- 拡大版は[こちら](./map/od_map.html)
+
+```{r}
+# 移動経路ごとのカウント数
+data_queries_od <-
+  data_queries %>% 
+  group_by(o,d) %>% 
+  summarise(count=n()) %>%
+  ungroup() %>% 
+  arrange(desc(count)) %>% 
+  separate(col=o,into=c("o_lng","o_lat"),sep=",") %>% 
+  separate(col=d,into=c("d_lng","d_lat"),sep=",") %>% 
+  mutate(
+    o_lng=o_lng %>% as.numeric,
+    o_lat=o_lat %>% as.numeric,
+    d_lng=d_lng %>% as.numeric,
+    d_lat=d_lat %>% as.numeric
+  ) %>% 
+  mutate(log10_count = log10(count)) %>% 
+  head(300)
+
+# カウント別カラー用のパレットの作成
+pal_od <- colorNumeric(palette="Spectral", domain=data_queries_od$log10_count, reverse=TRUE)
+
+# 地図の作成
+plot_queries_od <-
+  leaflet() %>% 
+  addTiles() %>% 
+  addLegend(position='topright', pal=pal_od, values=data_queries_od$log10_count) %>% 
+  addScaleBar(position="bottomleft",options = scaleBarOptions(imperial=FALSE))
+
+for(i in 1:300){
+  o_p  <- data_queries_od %>% filter(row_number() == i) %>% select(o_lng,o_lat,count,log10_count) %>% rename(lng=o_lng,lat=o_lat)
+  d_p  <- data_queries_od %>% filter(row_number() == i) %>% select(d_lng,d_lat,count,log10_count) %>% rename(lng=d_lng,lat=d_lat)
+  od_p <- union(o_p,d_p)
+  
+  plot_queries_od %<>% addPolylines(lng=od_p$lng,lat=od_p$lat,color=pal_od(od_p$log10_count),weight="5")
+}
+
+plot_queries_od
+```
+
+## 移動経路の可視化(mode別)
+
+作成中。。。
+
+# その他
+
+## train・test両方に出てくるpid
+
+作成中。。。
+
+## profiles : ユーザー特徴について
+
+- profiles の内容についての概要は[こちら](./create_report/data_profiles_report.html)を参照。
+    - DataExplorer パッケージの出力結果を格納しているだけ
+
+```{r}
+# # ユーザー特徴
+#data_profiles <- read_csv("data_set_phase1/profiles.csv")
+#data_profiles %>% create_report(output_file = "data_profiles_report.html", output_dir = "create_report")
+```
+
+## 北京の気候
+
+- 気象庁のデータベースから、北京の2018/11/01~2018/12/31の気候データを取得
+    - 参考 : [気象庁「地点別データ・グラフ   (世界の天候データツール（ClimatView 日別値））」](https://www.data.jma.go.jp/gmd/cpd/monitor/dailyview/graph_mkhtml_d.php?&n=54511&p=62&s=1&r=1&y=2018&m=12&d=31&e=0&k=0)
+
+```{r}
+# 北京の気候データの読み込み
+climate <- read_csv("data_set_phase1/climate.csv")
+climate %<>%
+  mutate(
+    date = ymd(str_c(year,month,day))
+  ) %>% 
+  select(-year,-month,-day)
+```
+
+### 北京の気温推移
+
+```{r}
+# 北京の気温をプロット
+climate %>% 
+  select(-precipitation) %>% 
+  gather(key = key, value = value,-date) %>% 
+  ggplot(aes(x=date,y=value,color=key)) +
+  geom_line()
+```
+
+- 当然、11月より12月の平均気温のほうが低い
+- 徒歩や自転車で移動する人の割合に影響はあるか？要確認。
+
+### 降水のあった日
+```{r}
+# 北京で降水のあった日を確認
+climate %>% 
+  select(date,precipitation) %>% 
+  filter(precipitation > 0.0) %>% 
+  print
+```
+
+- 11月4日と12月1日のみ雨が降っている
+- 行動パターンに変化はないか？要確認。
