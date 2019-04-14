@@ -86,6 +86,10 @@ prior_package(dplyr)
     transport_modeに関連するデータを探索的に解析し、  
     transport_modeがどの交通手段に対応しているか(ex:mode1はバスに対応している、等々)推定を行います。
 
+    - **最速・最短経路の影響**  
+    バス・地下鉄といった公共交通手段が複数レコメンドされた際、  
+    候補内で最速・最短となる経路がどれだけクリックされやすくなるかを確認します。
+
     - **目的地・移動経路の可視化**  
     ユーザーがよく目的地として設定する地点や、  
     頻繁に検索される移動経路の可視化を行います。
@@ -102,6 +106,7 @@ prior_package(dplyr)
 - description 内で、transport mode は11種類あることは記載されているが、具体的にどのような輸送手段なのかは書かれていない。
 - そこで、実際に Baidu Map をインストールし、どのような transport mode が出てくるかを確認しました。
 - アプリ上で確認できた移動手段は以下の12種類
+
     - 徒歩
     - 自転車
     - 車
@@ -116,6 +121,12 @@ prior_package(dplyr)
     - 地下鉄 & タクシー
     
 - この内の11種類がtransport modeとなっている？
+
+### transport_mode のルール
+
+- 「駅まで徒歩で移動」->「地下鉄で移動」->「駅から目的地まで徒歩で移動」のような場合は、  
+「地下鉄のみを利用した」場合と同じmodeが選択される。
+-  3つ以上の交通手段を併用するmodeはレコメンドされない  (地下鉄&バス&自転車のような候補は出てこない)
 
 ### 中国のシェアサイクル事情
 
@@ -426,6 +437,7 @@ data_plans %>%
 ```
 
 ### コメント
+
 - 緑線：ネットで調べた地下鉄の料金
 - mode2 は出現回数も多いため、地下鉄のみ利用と推測。
 - mode9 は mode2 と比較して100RMD高いだけのことが多いため、レンタルサイクル&地下鉄利用と推測
@@ -475,6 +487,133 @@ data_plans %>%
 |   9|地下鉄&自転車|・ネットで調べた地下鉄料金+100RMB程度となっていることが多い|
 |  10|不明|・(地下鉄&タクシー) or (バス&タクシー) or (配車アプリ)のどれかか？|
 |  11|バス&自転車|・ネットで調べたバス料金と当てはまりが良い<br>・バスのみ利用 or バス&地下鉄は他のmodeに割り当てられていると推測<br>・バス&タクシーにしては料金が高すぎるので、消去法でバス&自転車と推測|
+
+# 最速・最短経路の影響
+
+この章では、バス・地下鉄といった公共交通手段が複数レコメンドされた際、  
+候補内で最速・最短となる経路がどれだけクリックされやすくなるかを確認します。
+
+## 最速・最短経路の考え方
+
+- あるplanで、以下の内から複数のmodeがレコメンドされ、どれかがclickされたケースを考える。
+
+    - mode 1 : バス
+    - mode 2 : 地下鉄
+    - mode 7 : バス&地下鉄
+    - mode 9 : 地下鉄&自転車
+    - mode11 : バス&自転車
+    
+- 上記の候補の中で、最も早く到着するor最も安くなる経路が選ばれやすくなると推測できる。
+- 車やタクシーでの移動は選択ロジックが異なるように思えるので、最短・最速経路を見る際は除外する。
+    - 車が最短・最速だとしても、そもそも車を持っていないようなユーザーはclickしない。
+    - タクシーが最短だとしても、他の交通手段よりも価格が大幅に高いためclickされにくいと考えられる。
+    - 徒歩・自転車についても、planに含まれていれば必ず最安となってしまうため、今回は除外。
+  
+## 最速・最短経路の影響確認
+    
+```{r}
+# バスor地下鉄と推測されるtransport_modeのリストを作る
+mode_bus_or_subway = c(1,2,7,9,11)
+
+#各sidごとに最速・最安経路となるsidを抜き出す
+data_plans_fastest <-
+  data_plans %>% 
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
+  group_by(sid) %>% 
+  filter(eta == min(eta)) %>% 
+  ungroup %>% 
+  select(sid,transport_mode) %>%
+  mutate(flag_fastest = 1)
+  
+data_plans_lowest <-
+  data_plans %>% 
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
+  group_by(sid) %>% 
+  filter(price == min(price)) %>% 
+  ungroup %>% 
+  select(sid,transport_mode) %>%
+  mutate(flag_lowest = 1)
+
+# plansの中からバスor地下鉄が選択されたsidを抽出
+data_clicks_bus_or_subway <-
+  data_clicks %>%
+  filter(click_mode %in% mode_bus_or_subway) %>% 
+  select(sid,click_mode) %>% 
+  mutate(flag_click = 1)
+
+# plansからバス・地下鉄のみを抜き出し、最安・最短フラグをつける
+data_plans_bus_of_subway <-
+  data_plans %>%
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
+  inner_join(data_clicks_bus_or_subway %>% select(sid),by="sid") %>% 
+  group_by(sid) %>% 
+  filter(n() >= 2) %>% 
+  ungroup %>% 
+  left_join(data_clicks_bus_or_subway,by=c("sid","transport_mode"="click_mode")) %>% 
+  select(sid,transport_mode,flag_click) %>%
+  distinct() %>% 
+  left_join(data_plans_fastest,by=c("sid","transport_mode")) %>% 
+  left_join(data_plans_lowest ,by=c("sid","transport_mode")) %>% 
+  replace_na(list(flag_click = 0, flag_fastest = 0, flag_lowest = 0)) %>%
+  mutate(flag_fast_and_low = str_c(flag_fastest,"-",flag_lowest)) %>% 
+  mutate_at(.vars = vars(starts_with("flag_"),"transport_mode"),.funs = as.factor)
+```
+
+### 最速・最安フラグ別 click割合
+
+```{r}
+# 最速・最安フラグ別 clickの割合
+data_plans_bus_of_subway %>% 
+  ggplot(
+    aes(x=flag_fast_and_low,fill=flag_click)
+  ) +
+  geom_bar(position="fill")
+```
+
+### フラグの意味について
+
+- flag_fast_and_lowの意味は以下の通り
+
+    - 0-0 : 最速でも最安でもないルート
+    - 0-1 : 最安だが最速ではないルート
+    - 1-0 : 最速だが最安ではないルート
+    - 1-1 : 最速かつ最安となるルート
+
+
+- flag_clickの意味は以下の通り
+
+    - 0 : レコメンドされたがclickされなかった回数
+    - 1 : レコメンドされ、clickされた回数
+
+### 最速・最安フラグ別 click割合(mode別)
+
+```{r}
+data_plans_bus_of_subway %>% 
+  ggplot(
+    aes(x=flag_fast_and_low,fill=flag_click)
+  ) +
+  geom_bar(position="fill") +
+  facet_wrap(~transport_mode)
+```
+
+### 最速・最安フラグ別 click総数(mode別)
+
+```{r}
+data_plans_bus_of_subway %>% 
+  ggplot(
+    aes(x=flag_fast_and_low,fill=flag_click)
+  ) +
+  geom_bar() +
+  facet_wrap(~transport_mode)
+```
+
+## 最速・最短経路の影響まとめ
+
+- 最安経路はclickされる割合が微増する傾向がある。
+    - mode 9のみ最安経路のほうがclickされなくなるように見えるが、サンプル数が少なくブレたためか？
+- 最速経路はclickされる割合が大幅に上昇する。
+- mode 9,11(自転車を併用するケース)は最速かつ最安経路となっても半分程度しか選択されない。
+    - シェアサイクルを使いにくい特徴をもったユーザーがいる可能性あり。要確認。
 
 # 目的地・移動経路の可視化
 この章では、ユーザーがよく目的地として設定する地点や、  

@@ -562,35 +562,13 @@ data_queries %>%
 
 #plansからtransport_mode1,2,7,9,11(バス,地下鉄,バス&地下鉄,地下鉄&自転車,バス&自転車)のみ抜き出す
 
-data_plans
-
-data_clicks
-
-data_plans_count <-
-  data_plans %>%
-  filter(transport_mode %in% c(1,2,7,9)) %>% 
-  group_by(sid) %>% 
-  summarise(count=n()) %>%
-  filter(count >=2) %>% 
-  ungroup
-
-data_plans %>%
-  filter(transport_mode %in% c(1,2,7,9)) %>% 
-  inner_join(data_plans_count,by="sid") %>% 
-  select(sid,transport_mode) %>%
-  arrange(transport_mode,sid) %>% 
-  nest(-sid) %>% 
-  mutate(data = data %>% as.character %>% str_extract("(\\d:\\d|c\\(\\d(,\\s\\d)*\\))")) %>%
-  ggplot(
-    aes(x = data)
-  ) +
-  geom_bar()
-  #theme(axis.text.x = element_text(angle=90,hjust=1,vjust=.5))
+# バスor地下鉄と推測されるtransport_modeのリストを作る
+mode_bus_or_subway = c(1,2,7,9,11)
 
 #各sidごとに最速・最安経路となるsidを抜き出す
 data_plans_fastest <-
   data_plans %>% 
-  filter(transport_mode %in% c(1,2,7,9)) %>% 
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
   group_by(sid) %>% 
   filter(eta == min(eta)) %>% 
   ungroup %>% 
@@ -599,7 +577,7 @@ data_plans_fastest <-
   
 data_plans_lowest <-
   data_plans %>% 
-  filter(transport_mode %in% c(1,2,7,9)) %>% 
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
   group_by(sid) %>% 
   filter(price == min(price)) %>% 
   ungroup %>% 
@@ -609,16 +587,14 @@ data_plans_lowest <-
 # plansの中からバスor地下鉄が選択されたsidを抽出
 data_clicks_bus_or_subway <-
   data_clicks %>%
-  filter(click_mode %in% c(1,2,7,9)) %>% 
+  filter(click_mode %in% mode_bus_or_subway) %>% 
   select(sid,click_mode) %>% 
   mutate(flag_click = 1)
-
-data_clicks_bus_or_subway
 
 # plansからバス・地下鉄のみを抜き出し、最安・最短フラグをつける
 data_plans_bus_of_subway <-
   data_plans %>%
-  filter(transport_mode %in% c(1,2,7,9)) %>% 
+  filter(transport_mode %in% mode_bus_or_subway) %>% 
   inner_join(data_clicks_bus_or_subway %>% select(sid),by="sid") %>% 
   group_by(sid) %>% 
   filter(n() >= 2) %>% 
@@ -632,14 +608,28 @@ data_plans_bus_of_subway <-
   mutate(flag_fast_and_low = str_c(flag_fastest,"-",flag_lowest)) %>% 
   mutate_at(.vars = vars(starts_with("flag_"),"transport_mode"),.funs = as.factor)
 
-data_plans_bus_of_subway
-
+# 最速・最安フラグ別 clickの割合
 data_plans_bus_of_subway %>% 
   ggplot(
     aes(x=flag_fast_and_low,fill=flag_click)
   ) +
+  geom_bar(position="fill") +
+  facet_wrap(~transport_mode)
+
+# transport別の最速・最安フラグの割合
+data_plans_bus_of_subway %>% 
+  ggplot(
+    aes(x=transport_mode,fill=flag_fast_and_low)
+  ) +
   geom_bar(position="fill")
 
+# transport別のclickの割合
+data_plans_bus_of_subway %>% 
+  ggplot(
+    aes(x=transport_mode,fill=flag_click)
+  ) +
+  geom_bar(position="fill") 
+  
 data_plans_bus_of_subway %>% 
   ggplot(
     aes(x=flag_fastest,fill=flag_click)
