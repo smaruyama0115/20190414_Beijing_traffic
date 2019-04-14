@@ -1,6 +1,6 @@
 ---
 title: "Regular ML レポート"
-author: "smaruyama0115"
+author: "Shohei Maruyama"
 date: "2019/4/15"
 output:
   html_document:
