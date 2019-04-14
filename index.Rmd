@@ -33,6 +33,7 @@ library(DataExplorer)
 library(lubridate)
 library(data.table)
 library(leaflet)
+library(corrr)
 library(DT)
 
 # tibbleのprintに関する設定
@@ -130,8 +131,10 @@ prior_package(dplyr)
 
 ### 中国のシェアサイクル事情
 
-- 「バス & 自転車」のように、自転車と他の交通機関を併用するパターンもあるが、これは中国でシェアサイクルが普及しているため。(自転車を担いでバスに乗っているわけでは無い)
-- 18年5月時点で、北京内で190万台、全国で3000万台のシェアサイクル用自転車が設置されており、全国利用者は17年末で2億人を突破。
+- 「バス & 自転車」のように、自転車と他の交通機関を併用するパターンもあるが、  
+これは中国でシェアサイクルが普及しているため。(自転車を担いでバスに乗っているわけでは無い)
+- 18年5月時点で、北京内で190万台、全国で3000万台のシェアサイクル用自転車が設置されており、  
+全国利用者は17年末で2億人を突破。
 - 中国のシェアサイクルはほぼどこでも乗り捨てて構わない
     - 日本のシェアサイクルの「ポート」のように決められた場所が無い。
     - 各自転車にGPSが設定されており、どこに自転車があるかをアプリ上で確認できる。
@@ -775,10 +778,81 @@ data_plans %>% filter(sid==1081113)
     - DataExplorer パッケージの出力結果を格納しているだけ
 
 ```{r}
-# # ユーザー特徴
-#data_profiles <- read_csv("data_set_phase1/profiles.csv")
+# ユーザー特徴の読み込み
+data_profiles <- read_csv("data_set_phase1/profiles.csv")
+
+# # 簡易レポートの作成
 #data_profiles %>% create_report(output_file = "data_profiles_report.html", output_dir = "create_report")
 ```
+
+## 車の使用とユーザー特徴について
+
+- 以下の特徴量について、profileの特徴量との相関係数を確認する。
+
+    - count_car     : 各pidについて、車をclickした回数。
+    - mean_car      : 各pidについて、planで車が候補に入った際に車をclickした割合
+    - flag_have_car : 各pidについて、一度でも車をclickしたことがあれば1(=車を持っているとみなす)
+
+```{r}
+# 車を使うユーザーの特徴を抽出----
+
+# 車をplanで提案されたsidを抽出
+data_plans_car <-
+  data_plans %>% 
+  filter(transport_mode == 3) %>% 
+  select(sid) %>%
+  distinct()
+
+# 車をclickしたsidを抽出
+data_clicks_car <-
+  data_clicks %>% 
+  filter(click_mode == 3) %>% 
+  select(sid) %>% 
+  mutate(flag_car = 1)
+
+# 各pidについて、count_car, mean_car, flag_have_car を算出した後、
+# pidとprofileの特徴量を突合させる。
+data_queries_car <-
+  data_queries %>% 
+  filter(!is.na(pid)) %>% 
+  inner_join(data_plans_car,by="sid") %>%
+  left_join(data_clicks_car,by="sid") %>% 
+  replace_na(list(flag_car = 0)) %>% 
+  select(pid,flag_car) %>% 
+  group_by(pid) %>% 
+  summarize(
+      count_car     = sum(flag_car)
+    , mean_car      = mean(flag_car)
+    , flag_have_car = ifelse(count_car>0,1,0)
+  ) %>% 
+  left_join(data_profiles,by="pid")
+
+# 相関係数の確認
+
+data_queries_car %>%
+  select(-pid) %>% 
+  correlate %>% 
+  focus(c(count_car, mean_car, flag_have_car)) %>% 
+  arrange(desc(abs(flag_have_car))) %>%
+  datatable(
+    rownames = FALSE,
+    class = 'nowrap',
+    extensions = c('FixedColumns','Scroller'),
+    options = list(
+      # FixedColumns
+      dom          = 'Bfrtip',
+      scrollX      = TRUE,
+      # Scroller
+      deferRender = TRUE,
+      scrollY = 200,
+      scroller = TRUE
+    )
+  )
+```
+
+- 上の表の通り、「車の所有・使用頻度に関する特徴量」と  
+「profile内の特徴量」の間で相関が強いものは確認できなかった。
+- そのため、profileの特徴量に加え、上記の「車に関する特徴量」をモデルに組み込んでも良いかもしれない。
 
 ## 北京の気候
 

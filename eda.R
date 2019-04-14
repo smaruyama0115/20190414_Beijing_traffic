@@ -1,3 +1,6 @@
+#ライブラリのインストール
+#install.packages("corrr", dependencies = c("Depends", "Suggests"))
+
 # ライブラリの読み込み----
 library(tidyverse)
 library(magrittr)
@@ -644,20 +647,142 @@ data_plans_bus_of_subway %>%
 
 data_plans_bus_of_subway %>% map(class)
   
-  inner_join(data_plans_count,by="sid") %>% 
-  select(sid,transport_mode) %>%
-  arrange(transport_mode,sid) %>% 
-  nest(-sid) %>% 
-  mutate(data = data %>% as.character %>% str_extract("(\\d:\\d|c\\(\\d(,\\s\\d)*\\))")) %>%
+inner_join(data_plans_count,by="sid") %>% 
+select(sid,transport_mode) %>%
+arrange(transport_mode,sid) %>% 
+nest(-sid) %>% 
+mutate(data = data %>% as.character %>% str_extract("(\\d:\\d|c\\(\\d(,\\s\\d)*\\))")) %>%
+ggplot(
+  aes(x = data)
+) +
+geom_bar()
+
+# 車を使うユーザーの特徴を抽出----
+
+# 車を使用したsidを抽出
+data_clicks_car <-
+  data_clicks %>% 
+  filter(click_mode == 3) %>% 
+  select(sid) %>% 
+  mutate(flag_car = 1)
+
+data_plans_car <-
+  data_plans %>% 
+  filter(transport_mode == 3) %>% 
+  select(sid) %>%
+  distinct()
+
+data_queries_car <-
+  data_queries %>% 
+  filter(!is.na(pid)) %>% 
+  inner_join(data_plans_car,by="sid") %>%
+  left_join(data_clicks_car,by="sid") %>% 
+  replace_na(list(flag_car = 0)) %>% 
+  select(pid,flag_car) %>% 
+  group_by(pid) %>% 
+  summarize(
+      count_clicks  = n()
+    , count_car     = sum(flag_car)
+    , mean_car      = mean(flag_car)
+    , flag_have_car = ifelse(count_car>0,1,0)
+  ) %>% 
+  left_join(data_profiles,by="pid")
+
+data_queries_car
+
+library(corrr)
+
+# 相関係数の確認
+
+data_queries_car %>%
+  select(-pid,-count_clicks) %>% 
+  correlate %>% 
+  focus(c(count_car, mean_car, flag_have_car)) %>% 
+  arrange(desc(abs(flag_have_car)))
+
+data_queries_car %>% 
+  filter(count_clicks < 30) %>% 
   ggplot(
-    aes(x = data)
+    aes(x = flag_have_car)
   ) +
   geom_bar()
-# lowest, fastest
 
-df <- tidyr::unite(data = iris, col = colll, starts_with("Sepal"), sep = "-")
+# 自転車を使うユーザーの特徴を抽出----
 
+data_clicks_cycle <-
+  data_clicks %>% 
+  filter(click_mode == 2) %>% 
+  select(sid) %>% 
+  mutate(flag_cycle = 1)
 
+data_plans_cycle <-
+  data_plans %>% 
+  filter(transport_mode == 2) %>% 
+  select(sid) %>%
+  distinct()
 
+data_queries_cycle <-
+  data_queries %>% 
+  filter(!is.na(pid)) %>% 
+  inner_join(data_plans_cycle,by="sid") %>%
+  left_join(data_clicks_cycle,by="sid") %>% 
+  replace_na(list(flag_cycle = 0)) %>% 
+  select(pid,flag_cycle) %>% 
+  group_by(pid) %>% 
+  summarize(
+    count_clicks  = n()
+    , count_cycle     = sum(flag_cycle)
+    , mean_cycle      = mean(flag_cycle)
+    , flag_have_cycle = ifelse(count_cycle>0,1,0)
+  ) %>% 
+  left_join(data_profiles,by="pid")
 
+data_queries_cycle
 
+# 相関係数の確認
+
+data_queries_cycle %>%
+  select(-pid,-count_clicks) %>% 
+  correlate %>% 
+  focus(c(count_cycle, mean_cycle, flag_have_cycle)) %>% 
+  arrange(desc(abs(count_cycle)))
+
+# タクシーを使うユーザーの特徴を抽出----
+
+data_clicks_cycle <-
+  data_clicks %>% 
+  filter(click_mode == 4) %>% 
+  select(sid) %>% 
+  mutate(flag_cycle = 1)
+
+data_plans_cycle <-
+  data_plans %>% 
+  filter(transport_mode == 4) %>% 
+  select(sid) %>%
+  distinct()
+
+data_queries_cycle <-
+  data_queries %>% 
+  filter(!is.na(pid)) %>% 
+  inner_join(data_plans_cycle,by="sid") %>%
+  left_join(data_clicks_cycle,by="sid") %>% 
+  replace_na(list(flag_cycle = 0)) %>% 
+  select(pid,flag_cycle) %>% 
+  group_by(pid) %>% 
+  summarize(
+    count_clicks  = n()
+    , count_cycle     = sum(flag_cycle)
+    , mean_cycle      = mean(flag_cycle)
+    , flag_have_cycle = ifelse(count_cycle>0,1,0)
+  ) %>% 
+  left_join(data_profiles,by="pid")
+
+data_queries_cycle
+
+# 相関係数の確認
+
+data_queries_cycle %>%
+  select(-pid,-count_clicks) %>% 
+  correlate %>% 
+  focus(c(count_cycle, mean_cycle, flag_have_cycle)) %>% 
+  arrange(desc(abs(flag_have_cycle)))
