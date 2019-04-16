@@ -786,3 +786,70 @@ data_queries_cycle %>%
   correlate %>% 
   focus(c(count_cycle, mean_cycle, flag_have_cycle)) %>% 
   arrange(desc(abs(flag_have_cycle)))
+
+# order が clickに与える影響を確認----
+data_plans_join_clicks <-
+  data_plans %>% 
+  left_join(
+    data_clicks %>% mutate(flag_click = 1),
+    by=c("sid","transport_mode"="click_mode")
+  ) %>% 
+  replace_na(list(flag_click = 0))
+
+data_plans_join_clicks
+
+data_plans_join_clicks %>% 
+  group_by(sid) %>% 
+  filter(max(order)==3) %>% 
+  ungroup() %>% 
+  ggplot(
+    aes(
+      x=order %>% as.factor,
+      fill=flag_click %>% as.factor
+    )
+  ) +
+  geom_bar(position="fill") +
+  facet_wrap(~transport_mode)
+
+?group_by
+
+#徒歩の割合が気温によってどれだけ下がるかを確認----
+data_plans_join_clicks %>% 
+  group_by(sid) %>% 
+  filter(any(transport_mode==6)) %>% 
+  ungroup() %>%
+  filter(transport_mode == 6) %>% 
+  mutate(date=plan_time %>% ymd_hms %>% date) %>% 
+  ggplot(
+    aes(
+      x=date,
+      fill=flag_click %>% factor
+    )
+  ) + 
+  geom_bar()
+
+data_plans_join_clicks
+
+# 全transport_modeについて、recomendされたうちclickされた割合を日付ごと出す
+data_plans_join_clicks %>% 
+  mutate(date=plan_time %>% ymd_hms %>% date) %>% 
+  group_by(date, transport_mode) %>% 
+  summarise(
+    click_rate = mean(flag_click)
+  ) %>% 
+  ggplot(
+    aes(
+      x=date,
+      y=click_rate,
+      color=transport_mode %>% as.factor
+    )
+  ) +
+  geom_line() +
+  scale_color_brewer(palette = "Paired")
+
+
+20190311110020 %>% ymd_hms %>% date
+
+
+
+
