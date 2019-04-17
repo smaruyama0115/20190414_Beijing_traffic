@@ -5,7 +5,7 @@
 library(tidyverse)
 library(magrittr)
 library(ggplot2)
-#library(infotheo)
+library(infotheo)
 library(Hmisc)
 library(DataExplorer)
 #library(rpivotTable)
@@ -14,6 +14,8 @@ library(data.table)
 library(lubridate)
 #library(ggpubr)
 library(leaflet)
+
+library(geosphere)
 
 # tibbleのprint設定----
 print.tbl_df <- print.data.frame
@@ -847,9 +849,138 @@ data_plans_join_clicks %>%
   geom_line() +
   scale_color_brewer(palette = "Paired")
 
+# clicksの総計を日付ごと出す
 
-20190311110020 %>% ymd_hms %>% date
+data_clicks %>% 
+  mutate(date=click_time %>% ymd_hms %>% date) %>% 
+  filter(date < "2018/12/01") %>% 
+  group_by(date) %>%
+  ggplot(
+    aes(
+      x=date,
+      fill=click_mode %>% as.factor
+    )
+  ) +
+  geom_bar() +
+  scale_color_brewer(palette = "Paired")
 
+# ・2018-10-08以前は傾向が違う(ただしclick_rateはそこまで変わらない)
+# ・若干年末に向かってclicksの総量は減少気味？
+# ・10/09,11/05は欠損
+# ・11/15は大幅にclicksが少ない
+# ・11/15,22のmode9,11は他の日と比べて以上にclick_rateが小さい
+# ・mode7(地下鉄&バス), 2(地下鉄)は年末に向けて大きく上昇。
+#　 mode1(バス)は微増、mode9,11は大幅に劣化
+# 　mode6は微減
+# 　徒歩のclick_rateはほぼ変わりがない
+# 曜日別のclicks総量(1=日曜日)
+data_clicks %>% 
+  mutate(
+    date = click_time %>% ymd_hms %>% date,
+    wday = date %>% wday
+    ) %>% 
+  filter(
+    date >  "2018-10-08",
+    date <  "2018-12-01",
+    date != "2018-11-15"
+    ) %>%
+  group_by(date) %>% 
+  mutate(count_clicks=n()) %>% 
+  ungroup %>% 
+  group_by(wday) %>%
+  ggplot(
+    aes(
+      x=wday %>% as.factor,
+      y=count_clicks
+      )
+  ) +
+  geom_boxplot() +
+  scale_color_brewer(palette = "Paired")
 
+# 土曜日が一番多く、月曜日が一番少ない分布に見える
 
+# 曜日別のclicks総量(transport_mode別)
+data_clicks %>% 
+  mutate(
+    date = click_time %>% ymd_hms %>% date,
+    wday = date %>% wday
+  ) %>% 
+  filter(
+    date >  "2018-10-08",
+    date <  "2018-12-01",
+    date != "2018-11-15"
+  ) %>%
+  ggplot(
+    aes(
+      x=wday %>% as.factor
+    )
+  ) +
+  geom_bar() +
+  facet_wrap(~click_mode) +
+  scale_color_brewer(palette = "Paired")
+
+# # click_rateの曜日別変化
+# data_plans_join_clicks %>% 
+#   mutate(
+#     date = plan_time %>% ymd_hms %>% date,
+#     wday = date %>% wday
+#   ) %>%
+#   filter(
+#     date >  "2018-10-08",
+#     date <  "2018-12-01",
+#     date != "2018-11-15"
+#   ) %>%
+#   group_by(date, wday, transport_mode) %>% 
+#   summarise(
+#     click_rate = mean(flag_click)
+#   ) %>%
+#   ungroup %>% 
+#   ggplot(
+#     aes(
+#       x = wday %>% as.factor,
+#       y = click_rate
+#     )
+#   ) +
+#   geom_boxplot() +
+#   facet_wrap(~transport_mode)
+
+# 2,7,9,11は単純に季節変動が大きいということかも。
+  
+# mode5(徒歩)のclick_rateとetaの関係を確認 ---
+
+# mode5がplanに含まれた数を距離別に見てみる
+data_plans_join_clicks %>% 
+  filter(transport_mode==5) %>% 
+  ggplot(
+    aes(x = eta)
+  ) +
+  geom_histogram()
+
+# bin分割してみる
+data_plans_join_clicks
+data_plans_join_clicks %>% 
+  filter(transport_mode==5) %>% 
+  mutate(
+    eta_bin = eta %>% discretize(disc="equalwidth",nbins=60) %>% .$X %>% factor
+  ) %>% 
+  ggplot(
+    aes(x = eta_bin,fill=flag_click %>% factor)
+  ) +
+  geom_bar(position="fill")
+
+data_queries_with_dist <-
+  data_queries %>% 
+  separate(col=o,into=c("o_lng","o_lat"),sep=",") %>% 
+  separate(col=d,into=c("d_lng","d_lat"),sep=",") %>%
+  mutate_at(
+    .vars = vars(ends_with("lng"),ends_with("lat")),
+    .funs = as.numeric
+  ) %>% 
+  mutate(
+    od_dist = pmap_dbl(.l = list(o_lng,o_lat,d_lng,d_lat),.f = ~distGeo(c(..1,..2),c(..3,..4)))
+  )
+
+?distGeo
+?separate
+distGeo(c(0,0),c(1,1))
 
