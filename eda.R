@@ -968,6 +968,9 @@ data_plans_join_clicks %>%
   ) +
   geom_bar(position="fill")
 
+# 直線距離ごとにクリックされたmodeの割合を見る
+
+#直線距離のヒストグラム
 data_queries_with_dist <-
   data_queries %>% 
   separate(col=o,into=c("o_lng","o_lat"),sep=",") %>% 
@@ -980,6 +983,20 @@ data_queries_with_dist <-
     od_dist = pmap_dbl(.l = list(o_lng,o_lat,d_lng,d_lat),.f = ~distGeo(c(..1,..2),c(..3,..4)))
   )
 
+data_clicks
+
+data_queries_with_dist %>% 
+  inner_join(data_clicks,by="sid") %>%
+  mutate(od_dist_bin = od_dist %>% discretize(disc="equalfreq",nbins=100) %>% .$X %>% factor) %>% 
+  ggplot(
+    aes(
+       x=od_dist_bin %>% as.factor
+      ,fill=click_mode %>% as.factor
+      )
+  ) +
+  geom_bar(position="fill")
+
+?discretize
 ?distGeo
 ?separate
 distGeo(c(0,0),c(1,1))
