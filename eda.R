@@ -89,7 +89,8 @@ data_profiles %>% head(100) %>% print
 #data_plans %>% write_csv(path = "data_set_phase1/train_plans_r2.csv")
 
 # plans,clicksの読み込み----
-data_plans <- fread("data_set_phase1/train_plans_r2.csv", stringsAsFactors=FALSE, sep=",")
+data_plans_before <- fread("data_set_phase1/train_plans.csv", stringsAsFactors=FALSE, sep=",")
+data_plans <- fread("data_set_phase1/train_plans_r3.csv", stringsAsFactors=FALSE, sep=",")
 data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE, sep=",")
 
 #data_plans のplan_timeのフォーマットをなおす
