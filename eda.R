@@ -57,7 +57,7 @@ prior_package(dplyr)
 # データの読み込み----
 
 # ユーザー特徴
-data_profiles <- read_csv("data_set_phase1/profiles.csv")
+  data_profiles <- read_csv("data_set_phase1/profiles.csv")
 data_profiles %>% head(100) %>% print
 #data_profiles %>% create_report(output_file = "data_profiles_report.html", output_dir = "create_report")
 
