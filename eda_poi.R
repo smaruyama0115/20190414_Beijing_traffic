@@ -62,9 +62,14 @@ data_location <-
 data_poi = data.frame()
 
 url = "https://restapi.amap.com/v3/place/around"
-key = "1d4f000959256da7a9de1224355fd27d"
+#key = "1d4f000959256da7a9de1224355fd27d"
+#key = "4f780910c1c90fb08a75b6050c12fdcd"
+key = "E605f3a7d21b00ba6f1b760f6c7e2e1f"
+key = "33479b2da9be7d9c74c4d731b0a9a55c"
 radius = "1000"
-for(i in 1:length(data_location$location)){
+max_length = length(data_location$location)
+
+for(i in 2001:4000){
   tmp_location = data_location$location[[i]]
   
   res <- GET(
@@ -78,20 +83,28 @@ for(i in 1:length(data_location$location)){
   
   result <- res %>% content
 
+  if(result$status == "0"){print("error")}
+  
   if(result$pois %>% map_chr(~.$typecode) %>% length != 0){
     data_poi_tmp <-
       data.frame(
+        num      = i,
         location = tmp_location,
         typecode = result$pois %>% map_chr(~.$typecode),
         distance = result$pois %>% map_chr(~.$distance)
       )
     data_poi %<>% rbind(data_poi_tmp)
   }
+  
+  Sys.sleep(0.1)
 }
+
+#data_poi の保存
+
 
 data_poi_tmp
 
-data_poi
+data_poi %>% tail(100)
 
 # POIの取得テスト----
 key = "1d4f000959256da7a9de1224355fd27d"
@@ -109,13 +122,10 @@ res <- GET(
 )
 
 result <- res %>% content
-result$pois
-
-if(result$pois %>% map_chr(~.$typecode) %>% length == 0){print("A")}else{print("B")}
-
 result %>% list.tree
-
 result$pois %>% list.tree
+result$status == "1"
+
 result$pois %>% length
 View(result$pois[[1]])
 
