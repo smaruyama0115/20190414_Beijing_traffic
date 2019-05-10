@@ -64,7 +64,7 @@ data_poi = data.frame()
 url = "https://restapi.amap.com/v3/place/around"
 #key = "1d4f000959256da7a9de1224355fd27d"
 #key = "4f780910c1c90fb08a75b6050c12fdcd"
-key = "E605f3a7d21b00ba6f1b760f6c7e2e1f"
+key = "e605f3a7d21b00ba6f1b760f6c7e2e1f"
 key = "33479b2da9be7d9c74c4d731b0a9a55c"
 radius = "1000"
 max_length = length(data_location$location)
@@ -99,8 +99,12 @@ for(i in 2001:4000){
   Sys.sleep(0.1)
 }
 
-#data_poi の保存
+data_poi %>% tail(100)
 
+# 2804まで実行
+
+#data_poi の保存
+data_poi %>% write_csv(path = "data_set_phase1/data_poi.csv")
 
 data_poi_tmp
 
