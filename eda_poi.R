@@ -438,9 +438,17 @@ for (i in 1:length(result$pois)) {
 https://restapi.amap.com/v3/place/around
 1d4f000959256da7a9de1224355fd27d	
 
-
-
-
-
-
-
+?POST
+test <- POST(
+  url = "http://app.mobike.com/api/nearby/v4/nearbyBikeInfo",
+  add_headers(
+      "platform" = "1",
+      "Content-Type" = "application/x-www-form-urlencoded",
+      "User-Agent" = "User-Agent: Mozilla/5.0 (Android 7.1.2; Pixel Build/NHG47Q) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.9 NTENTBrowser/3.7.0.496 (IWireless-US) Mobile Safari/537.36"
+  ),
+  body = list(latitude="39.914824",longitude="116.435446"),
+  encode = "form"
+)
+test
+test %>% content %>% list.tree
+39.914824, 116.435446

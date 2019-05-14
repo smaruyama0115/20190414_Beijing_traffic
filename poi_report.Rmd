@@ -178,3 +178,7 @@ data_query_poi_mindist %>%
     - Auto Service(Filling Station, Automobile Rentalなど)
     - Transportation Service(Taxi, Bus Stationなど)
 - その他POIについても、API Keyあたりの呼び出し可能範囲内で確認していきたい。
+- (別件ですが) シェアサイクル(Mobike)の設置位置を呼び出せるAPIがあったため、  
+自転車の分布とclicksに関連性があるかを確認したい。
+    - https://github.com/ubahnverleih/WoBike/blob/master/Mobike.md
+    - ofoのAPIもあるらしいが、SMS認証が必要らしいので一旦Mobikeで確認してみたい。
