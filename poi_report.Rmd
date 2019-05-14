@@ -1,0 +1,180 @@
+---
+title: "Regular ML レポート"
+author: "Shohei Maruyama"
+date: "2019/5/15"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 2
+    code_folding: hide
+    md_extensions: -ascii_identifiers
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  comment="#",
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+```{r}
+# ライブラリの読み込み
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(Hmisc)
+library(DataExplorer)
+library(lubridate)
+library(data.table)
+library(leaflet)
+library(corrr)
+library(DT)
+
+# tibbleのprintに関する設定
+print.tbl_df <- print.data.frame
+
+# パッケージの優先順位変更
+unload_package <- function(pkg_name) {
+  packages <- Filter(function(x) stringr::str_detect(x, "^package:"), search())
+  packages <- Map(function(x) stringr::str_replace(x, "^package:", ""), packages)
+  packages <- unlist(unname(packages))
+  
+  if(!(pkg_name %in% packages)) {
+    return(pkg_name)
+  }
+  
+  result_packages <- pkg_name
+  while(TRUE) {
+    tryCatch({
+      detach(paste0("package:", pkg_name), character.only = TRUE)
+      break
+    }, error = function(e) {
+      required_package <- stringr::str_match(e$message, pattern = "required by ‘(.+?)’")[1, 2]
+      required_packages <- unload_package(required_package)
+      result_packages <<- c(result_packages, required_packages)
+    })
+  }
+  unique(result_packages)
+}
+
+prior_package <- function(pkg_name) {
+  pkg_name <- as.character(substitute(pkg_name))
+  pkg_names <- unload_package(pkg_name)
+  for (pkg_name in pkg_names) {
+    suppressPackageStartupMessages(library(pkg_name, character.only = TRUE))
+  }
+}
+
+prior_package(dplyr)
+```
+
+# このレポートについて
+
+- このレポートでは以下についての記載をしています。
+    - 中国の各都市のPOIを取得するためのAPIについての調査結果
+    - POIとTransport Modeについての関係性の調査結果
+
+# POI取得用APIについて
+
+## 使用可能なAPI
+
+### Baidu Maps API
+- 2019年4月からアカウント登録の規制が厳しくなり、  
+SMSが送受信できる中国の携帯電話番号がなければ登録できなくなった模様。
+- eSender(WeChatというラインのようなアプリでSMSを送受信できるサービス)を使って  
+SMSを送信するには、以下の手順が必要
+    - パスポートのアップロード
+    - 中国当局の承認
+- 中国以外で使用するのはかなり難しい  
+  
+### 高德地图API
+- Alibaba Group が提供するAPI
+- SMSが受信できる中国の携帯電話番号があれば登録が可能(送信はできなくて良い。)
+- eSenderを使えば無料で携帯電話番号を取得してアカウントの作成ができるため、こちらを使用。
+  
+## 高德地图API登録方法
+
+1. 中国の携帯電話番号を発行するため、WeChatのアカウントを作成し、eSenderに登録する。
+    + 参考：[だれでもつくれます　中国の電話番号](https://alis.to/mayu13th/articles/3757BR1Zg0ON)
+    + eSenderに登録する名前やパスポート番号は適当で良い
+    + キャンペーンコードとして「DS0300」と入れると無料期間が伸びる(らしい)
+    + WeChatに公式でKDD CUPのグループが作られているので、ついでに参加しておくと情報収集に便利  
+    (参考：[KDD CUP 2019 Discussion Group](https://dianshi.baidu.com/kdd/topic/show/28))  
+  
+2. 高德地图APIのアカウントを作成
+    + [高德地图APIホームページ](https://lbs.amap.com/)へ移動し、右上の「注册(登録)」から登録をする。
+    + Chromeを使用していれば、右クリック -> 「日本語に翻訳」で訳せば支障なく登録できる。
+    + 電話番号は1.で発行した電話番号の先頭「+86」を除いたもので登録  
+  
+3. ログインし、コンソール画面からAPI Keyを発行
+    + コンソール左側の「应用管理」 -> 「我的应用」でアプリを作成した後、API Keyを作成
+
+## アカウントについて
+- 1アカウントで10個までAPI Key を作成可能
+- 1日あたりのPOI検索APIの呼び出しが2000回まで可能(1Keyあたり)
+- 1秒あたりのPOI検索APIの呼び出しは50回まで可能に
+    - その他、アカウント権限に関する詳細は[公式HP](https://lbs.amap.com/dev/user/permission)を参照。
+
+## POI検索について
+- APIの詳細については[こちら](https://lbs.amap.com/api/webservice/guide/api/search)から
+- 緯度経度を一つ入力すると、周辺のPOI情報を**最大24個まで**返す
+    - POIをいくつ返すかはパラメータの中のoffsetで指定(初期値：20)
+    - typecodeを指定せずにPOI検索をすると、日用品店や飲食店に埋もれて  
+    駅やバス停などの重要そうなPOIが返ってこない
+
+# POI解析結果
+
+## 地下鉄
+
+各sidについて、出発地点の最も近くにある地下鉄までの距離ごとに  
+clickされたtransport modeの内訳を確認
+
+```{r}
+#data_poi_subywayの読み込み----
+data_poi_subway <- read_csv("data_set_phase1/data_poi_subway.csv")
+
+# poicodeの読み込み----
+data_poicode <- read_csv("data_set_phase1/amap_poicode_utf8n_cr.csv")
+
+# queriesの読み込み
+data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
+
+# clicksの読み込み
+data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE, sep=",")
+
+# queryとpoiの突合
+data_query_poi <-
+  data_queries %>% 
+  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_subway,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、地下鉄までの最短距離を抽出(3km以内に地下鉄がなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認
+data_query_poi_mindist %>% 
+  mutate(flag_subway = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+## TODO
+
+- 特に以下についてclick_modeとの関連性を確認する。
+    - Auto Service(Filling Station, Automobile Rentalなど)
+    - Transportation Service(Taxi, Bus Stationなど)
+- その他POIについても、API Keyあたりの呼び出し可能範囲内で確認していきたい。

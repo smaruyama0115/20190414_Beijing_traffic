@@ -1,3 +1,7 @@
+install.packages("devtools")
+install.packages("esquisse")
+devtools::install_github("thomasp85/patchwork")
+
 library(tidyverse)
 library(magrittr)
 library(ggplot2)
@@ -9,6 +13,8 @@ library(lubridate)
 library(leaflet)
 library(geosphere)
 library(httr)
+library(patchwork)
+library(esquisse)
 
 # パッケージの優先順位変更
 unload_package <- function(pkg_name) {
@@ -44,9 +50,9 @@ prior_package <- function(pkg_name) {
 
 prior_package(dplyr)
 
-# 出回っていたaddressのcsvを確認----
-data_address <- read_csv("data_set_phase1/address-info-clean2.csv",locale=locale(encoding="SJIS"))
-data_address %>% View()
+# # 出回っていたaddressのcsvを確認----
+# data_address <- read_csv("data_set_phase1/address-info-clean2.csv",locale=locale(encoding="SJIS"))
+# data_address %>% View()
 
 # # #train_plans(レコメンド情報)の読み込み
 # data_plans <- read_csv("data_set_phase1/train_plans.csv")
@@ -95,59 +101,96 @@ data_location <-
 
 # APIを用いてPOI情報を取得
 
-# data_poi = data.frame()
-# 
-# url = "https://restapi.amap.com/v3/place/around"
-# key = "1d4f000959256da7a9de1224355fd27d"
-# key = "4f780910c1c90fb08a75b6050c12fdcd"
-# key = "e605f3a7d21b00ba6f1b760f6c7e2e1f"
-# key = "33479b2da9be7d9c74c4d731b0a9a55c"
-# radius = "1000"
-# max_length = length(data_location$location)
-# 
-# max_length
-# key
-# 
-# for(i in 2805:4000){
-#   tmp_location = data_location$location[[i]]
-#   
-#   res <- GET(
-#     url = url,
-#     query = list(
-#       key = key
-#       , location = tmp_location
-#       , radius = radius
-#     )
-#   )
-#   
-#   result <- res %>% content
-# 
-#   if(result$status == "0"){print("error")}
-#   
-#   if(result$pois %>% map_chr(~.$typecode) %>% length != 0){
-#     data_poi_tmp <-
-#       data.frame(
-#         num      = i,
-#         location = tmp_location,
-#         typecode = result$pois %>% map_chr(~.$typecode),
-#         distance = result$pois %>% map_chr(~.$distance)
-#       )
-#     data_poi %<>% rbind(data_poi_tmp)
-#   }
-#   
-#   Sys.sleep(0.1)
-# }
-# 
-# data_poi %>% tail(100)
+data_poi_subway = data.frame()
+data_poi_bus = data.frame()
+
+url = "https://restapi.amap.com/v3/place/around"
+key = list(
+  "1d4f000959256da7a9de1224355fd27d"
+  ,"4f780910c1c90fb08a75b6050c12fdcd"
+  ,"e605f3a7d21b00ba6f1b760f6c7e2e1f"
+  ,"33479b2da9be7d9c74c4d731b0a9a55c"
+  ,"851d6ded552e6a0de76ff7c5948d7ae0"
+  )
+
+key = list(
+   "3c83cc913dd4328b9de8fb2456f0f231"
+  ,"41e99da9854ee15311fb5237810fa444"
+  ,"e3c0c211113be0d3eda10b7a3ad8846c"
+  ,"4a7ed472754634489f91520f33c90dc3"
+  ,"0012b2712d23f646f338c95ad48de407"
+)
+
+#types  = "150500" # subway
+types = "150700" # Bus Station
+radius = "3000"
+offset = "24"
+max_length = length(data_location$location)
+
+max_length
+
+count = 1
+key_index = 1
+for(i in 1:max_length){
+  count = count + 1
+  tmp_key = key[[key_index]]
+  if(count > 1500){
+    key_index = key_index + 1
+    count = 0
+  }
+  tmp_location = data_location$location[[i]]
+
+  res <- GET(
+    url = url,
+    query = list(
+      key = tmp_key
+      , location = tmp_location
+      , types = types
+      , radius = radius
+      , offset = offset
+    )
+  )
+
+  result <- res %>% content
+
+  if(result$status == "0"){print("error")}
+
+  if(result$pois %>% map_chr(~.$typecode) %>% length != 0){
+    data_poi_tmp <-
+      data.frame(
+        num      = i,
+        location = tmp_location,
+        typecode = result$pois %>% map_chr(~.$typecode),
+        distance = result$pois %>% map_chr(~.$distance),
+        name     = result$pois %>% map_chr(~.$name),
+        id       = result$pois %>% map_chr(~.$id)
+      )
+    data_poi_bus %<>% rbind(data_poi_tmp)
+  }
+
+  Sys.sleep(0.1)
+}
+
+data_poi_bus
+
+data_poi %>% tail(100)
+# apiのテスト
+
+data_poi_subway %>% tail(10)
+data_poi_bus %>% tail(10)
 
 #data_poi の保存
 #data_poi %>% write_csv(path = "data_set_phase1/data_poi.csv")
+#data_poi_subway %>% write_csv(path = "data_set_phase1/data_poi_subway.csv")
+#data_poi_bus %>% write_csv(path = "data_set_phase1/data_poi_bus.csv")
 
 #data_poiの読み込み
-data_poi <- read_csv("data_set_phase1/data_poi.csv")
+data_poi <- read_csv("data_set_phase1/data_poi_subway.csv")
 
-data_poi %>% head(10)
+# データの確認
+data_poi %>% head(100) %>% View
 
+# poiの整形----
 data_poi %>% 
   mutate(typecode_length = nchar(typecode)) %>% 
   arrange(desc(typecode_length))
@@ -166,12 +209,14 @@ data_poi3 <-
   mutate(typecode = as.numeric(typecode)) %>% 
   select(-num)
 
-data_poi3 %>% head(10)
+# 整形結果の確認
+#data_poi3 %>% head(10)
 
-# poicodeの読み込み
+# poicodeの読み込み----
 data_poicode <- read_csv("data_set_phase1/amap_poicode_utf8n_cr.csv")
 
-data_poicode %>% head(10)
+#読込結果の確認
+# data_poicode %>% head(10)
 
 # queriesの読み込み
 data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
@@ -182,35 +227,39 @@ data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE
 # queryとpoiの突合
 data_query_poi <-
   data_queries %>% 
-  left_join(data_poi3,by=c("o"="location")) %>% 
-  inner_join(data_poicode,by=c("typecode"="subtype")) %>% 
-  inner_join(data_clicks,by="sid")
+  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_poi3,by=c("d"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
   
 data_query_poi
 
 # queryに出てくるbigcat/midcat/subcatの度数を確認
 data_query_poi %>%
   mutate(bigcat = fct_infreq(bigcat)) %>% 
-  filter(
-    bigcat != "Daily Life Service",
-    bigcat != "Food & Beverages",
-    bigcat != "Commercial House",
-    bigcat != "Shopping"
-  ) %>% 
+  # filter(
+  #   bigcat != "Daily Life Service",
+  #   bigcat != "Food & Beverages",
+  #   bigcat != "Commercial House",
+  #   bigcat != "Shopping"
+  # ) %>% 
   ggplot(aes(x=bigcat)) +
   geom_bar(stat="count") +
+  scale_y_log10()+
   coord_flip()
 
 data_query_poi %>%
   mutate(midcat = fct_infreq(midcat)) %>% 
   ggplot(aes(x=midcat)) +
   geom_bar(stat="count") +
+  scale_y_log10() +
   coord_flip()
 
 data_query_poi %>%
   mutate(subcat = fct_infreq(subcat)) %>% 
   ggplot(aes(x=subcat)) +
   geom_bar(stat="count") +
+  scale_y_log10() +
+  theme(axis.text.y=element_text(size=rel(0.4))) +
   coord_flip()
 
 #頻度を表で確認
@@ -224,12 +273,26 @@ data_query_poi %>%
   group_by(midcat) %>% 
   summarize(count = n())
 
+# すべてのカテゴリを合算した際のclickの割合
+g_all <-
+  data_query_poi %>% 
+  mutate(bigcat = fct_infreq(bigcat)) %>% 
+  ggplot(aes(x="cat_all",fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  coord_flip() +
+  scale_fill_brewer(palette="Paired") +
+  guides(fill=FALSE)
+
 # bigcatのclickの割合を確認
-data_query_poi %>% 
+g_bigcat <-
+  data_query_poi %>% 
   mutate(bigcat = fct_infreq(bigcat)) %>% 
   ggplot(aes(x=bigcat,fill=click_mode %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
-  coord_flip()
+  coord_flip() +
+  scale_fill_brewer(palette="Paired")
+
+g_bigcat + g_all + plot_layout(ncol=1,heights = c(10,1))
 
 # midcatのclickの割合を確認
 data_query_poi %>% 
@@ -244,9 +307,87 @@ data_query_poi %>%
   ggplot(aes(x=subcat,fill=click_mode %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
   coord_flip() +
-  theme(axis.text.y=element_text(size=rel(0.6)))
+  theme(axis.text.y=element_text(size=rel(0.4)))
 
-data_query_poi
+# bigcatがTransportation Serviceのものだけ割合を確認
+data_query_poi %>%
+  filter(bigcat == "Transportation Service") %>% 
+  #filter(bigcat == "Place Name & Address") %>% 
+  mutate(subcat = fct_infreq(subcat)) %>% 
+  ggplot(aes(x=subcat)) +
+  geom_bar(stat="count") +
+  scale_y_log10() +
+  #theme(axis.text.y=element_text(size=rel(0.4))) +
+  coord_flip()
+
+g_bigcat_trans <-
+  data_query_poi %>% 
+  filter(bigcat == "Transportation Service") %>% 
+  #filter(bigcat == "Place Name & Address") %>% 
+  mutate(subcat = fct_infreq(subcat)) %>% 
+  ggplot(aes(x=subcat,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  coord_flip() +
+  scale_fill_brewer(palette="Paired")
+
+g_bigcat_trans + g_all + plot_layout(ncol=1,heights = c(10,1))
+
+# いろいろ見ているうちにPOIの取得が良くないことに気づいたので、poytype別にAPIを叩くことに変更----
+
+#data_poi_subywayの読み込み----
+data_poi_bus <- read_csv("data_set_phase1/data_poi_bus.csv")
+
+data_poi_bus %>% tail
+
+# poicodeの読み込み----
+data_poicode <- read_csv("data_set_phase1/amap_poicode_utf8n_cr.csv")
+
+#読込結果の確認
+# data_poicode %>% head(10)
+
+# queriesの読み込み
+data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
+
+# clicksの読み込み
+data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE, sep=",")
+
+# queryとpoiの突合
+data_query_poi <-
+  data_queries %>% 
+  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_bus,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、地下鉄までの最短距離を抽出(3km以内に地下鉄がなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+
+data_query_poi %>% View
+data_query_poi_mindist %>% View
+
+data_query_poi_mindist %>% summary
+
+#地下鉄までの最短距離についてヒストグラムを作成
+
+data_query_poi_mindist %>% 
+  ggplot(aes(x=distance)) + geom_histogram()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = is.na(distance)) %>% 
+  mutate(flag_subway = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+
+?which.min
+
+data_poi_subway
+
 
 # POIの取得テスト----
 key = "1d4f000959256da7a9de1224355fd27d"
@@ -281,7 +422,8 @@ data.frame(
   location = location,
   typecode = result$pois %>% map_chr(~.$typecode),
   distance = result$pois %>% map_chr(~.$distance),
-  result   = c(result)
+  name     = result$pois %>% map_chr(~.$name),
+  id       = result$pois %>% map_chr(~.$id)
   )
 
 ?map

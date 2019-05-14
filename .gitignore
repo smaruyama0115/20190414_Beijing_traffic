@@ -1,4 +1,6 @@
 *.Rproj
+*.png
+*.eps
 data_set_phase1/*
 .Rproj.user
 .Rhistory
