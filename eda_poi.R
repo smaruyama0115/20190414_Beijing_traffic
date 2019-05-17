@@ -1,7 +1,7 @@
-install.packages("devtools")
-install.packages("esquisse")
-devtools::install_github("thomasp85/patchwork")
-
+# install.packages("devtools")
+# install.packages("esquisse")
+# devtools::install_github("thomasp85/patchwork")
+    
 library(tidyverse)
 library(magrittr)
 library(ggplot2)
@@ -15,6 +15,7 @@ library(geosphere)
 library(httr)
 library(patchwork)
 library(esquisse)
+library(RColorBrewer)
 
 # パッケージの優先順位変更
 unload_package <- function(pkg_name) {
@@ -103,40 +104,61 @@ data_location <-
 
 data_poi_subway = data.frame()
 data_poi_bus = data.frame()
+data_poi_taxi = data.frame()
+data_poi_automobile_rental = data.frame()
+data_poi_filling_station = data.frame()
 
 url = "https://restapi.amap.com/v3/place/around"
 key = list(
-  "1d4f000959256da7a9de1224355fd27d"
+   "1d4f000959256da7a9de1224355fd27d"
   ,"4f780910c1c90fb08a75b6050c12fdcd"
   ,"e605f3a7d21b00ba6f1b760f6c7e2e1f"
   ,"33479b2da9be7d9c74c4d731b0a9a55c"
   ,"851d6ded552e6a0de76ff7c5948d7ae0"
-  )
-
-key = list(
-   "3c83cc913dd4328b9de8fb2456f0f231"
+  ,"3c83cc913dd4328b9de8fb2456f0f231"
   ,"41e99da9854ee15311fb5237810fa444"
   ,"e3c0c211113be0d3eda10b7a3ad8846c"
   ,"4a7ed472754634489f91520f33c90dc3"
   ,"0012b2712d23f646f338c95ad48de407"
 )
 
+
+
+# key = list(
+#    "e3c0c211113be0d3eda10b7a3ad8846c"
+#   ,"4a7ed472754634489f91520f33c90dc3"
+#   ,"0012b2712d23f646f338c95ad48de407"
+#   ,"33479b2da9be7d9c74c4d731b0a9a55c"
+# )
+
+# key = list(
+#    "e3c0c211113be0d3eda10b7a3ad8846c"
+#   ,"4a7ed472754634489f91520f33c90dc3"
+#   ,"0012b2712d23f646f338c95ad48de407"
+#   ,"41e99da9854ee15311fb5237810fa444"
+# )
+
 #types  = "150500" # subway
-types = "150700" # Bus Station
+#types = "150700" # Bus Station
+#types = "151100" # Taxi
+types = "010900" # Automobile Rental
+#types = "010100" # filling station
 radius = "3000"
 offset = "24"
+key_reset_th = 1900
 max_length = length(data_location$location)
 
 max_length
 
 count = 1
 key_index = 1
+
 for(i in 1:max_length){
   count = count + 1
   tmp_key = key[[key_index]]
-  if(count > 1500){
+  if(count > key_reset_th){
     key_index = key_index + 1
-    count = 0
+    count = 1
   }
   tmp_location = data_location$location[[i]]
 
@@ -150,10 +172,13 @@ for(i in 1:max_length){
       , offset = offset
     )
   )
-
+  
   result <- res %>% content
 
-  if(result$status == "0"){print("error")}
+  if(result$status == "0"){
+    print(i)
+    print("error")
+  }
 
   if(result$pois %>% map_chr(~.$typecode) %>% length != 0){
     data_poi_tmp <-
@@ -165,9 +190,8 @@ for(i in 1:max_length){
         name     = result$pois %>% map_chr(~.$name),
         id       = result$pois %>% map_chr(~.$id)
       )
-    data_poi_bus %<>% rbind(data_poi_tmp)
+    data_poi_automobile_rental %<>% rbind(data_poi_tmp)
   }
-
   Sys.sleep(0.1)
 }
 
@@ -178,11 +202,16 @@ data_poi %>% tail(100)
 
 data_poi_subway %>% tail(10)
 data_poi_bus %>% tail(10)
+data_poi_filling_station %>% tail(10)
+data_poi_automobile_rental %>% tail(10)
 
 #data_poi の保存
 #data_poi %>% write_csv(path = "data_set_phase1/data_poi.csv")
 #data_poi_subway %>% write_csv(path = "data_set_phase1/data_poi_subway.csv")
 #data_poi_bus %>% write_csv(path = "data_set_phase1/data_poi_bus.csv")
+#data_poi_taxi %>% write_csv(path = "data_set_phase1/data_poi_taxi.csv")
+#data_poi_filling_station %>% write_csv(path = "data_set_phase1/data_poi_filling_station.csv")
+#data_poi_automobile_rental %>% write_csv(path = "data_set_phase1/data_poi_automobile_rental.csv")
 
 #data_poiの読み込み
 data_poi <- read_csv("data_set_phase1/data_poi_subway.csv")
@@ -227,11 +256,12 @@ data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE
 # queryとpoiの突合
 data_query_poi <-
   data_queries %>% 
-  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_clicks,by="sid") %>% 
   left_join(data_poi3,by=c("d"="location")) %>% 
   left_join(data_poicode,by=c("typecode"="subtype"))
   
 data_query_poi
+data_poi_taxi
 
 # queryに出てくるbigcat/midcat/subcatの度数を確認
 data_query_poi %>%
@@ -354,7 +384,7 @@ data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE
 # queryとpoiの突合
 data_query_poi <-
   data_queries %>% 
-  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_clicks,by="sid") %>% 
   left_join(data_poi_bus,by=c("o"="location")) %>% 
   left_join(data_poicode,by=c("typecode"="subtype"))
 
@@ -366,28 +396,168 @@ data_query_poi_mindist <-
   ungroup() %>% 
   rbind(data_query_poi %>% filter(is.na(distance)))
 
-data_query_poi %>% View
-data_query_poi_mindist %>% View
-
-data_query_poi_mindist %>% summary
+# data_query_poi %>% View
+# data_query_poi_mindist %>% View
+# data_query_poi_mindist %>% summary
 
 #地下鉄までの最短距離についてヒストグラムを作成
 
 data_query_poi_mindist %>% 
-  ggplot(aes(x=distance)) + geom_histogram()
+  ggplot(aes(x=distance)) + geom_histogram() #+ scale_y_log10()
 
 data_query_poi_mindist %>% 
-  #mutate(flag_subway = is.na(distance)) %>% 
-  mutate(flag_subway = round(distance/200)*200) %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/100)*100) %>% 
   ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count") +
+  #scale_fill_brewer(palette="Spectral") +
+  theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/100)*100) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
   scale_fill_brewer(palette="Paired") +
   theme(axis.text.x = element_text(angle=90))
 
-?which.min
 
-data_poi_subway
+# taxiについて----
+data_poi_taxi <- read_csv("data_set_phase1/data_poi_taxi.csv")
 
+data_poi_xxx <- data_poi_taxi
+data_query_poi <-
+  data_queries %>% 
+  left_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_xxx,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、taxiまでの最短距離を抽出(3km以内にtaxiがなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+
+data_query_poi_mindist %>% 
+  ggplot(aes(x=distance)) + geom_histogram() #+ scale_y_log10()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/100)*100) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count") +
+  #scale_fill_brewer(palette="Spectral") +
+  theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = ifelse(distance>=1000|is.na(distance),1,0)) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+
+# filling_stationについて----
+data_poi_filling_station <- read_csv("data_set_phase1/data_poi_filling_station.csv")
+
+data_poi_xxx <- data_poi_filling_station
+
+# poiの整形----
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  separate(col = typecode,into = c("typecode","typecode2","typecode3","typecode4"),sep="\\|")
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  select(-typecode2,-typecode3,-typecode4) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode3,-typecode4) %>% rename(typecode = "typecode2")) %>%
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode4) %>% rename(typecode = "typecode3")) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode3) %>% rename(typecode = "typecode4")) %>%
+  drop_na(typecode) %>% 
+  mutate(typecode = as.numeric(typecode))
+
+data_query_poi <-
+  data_queries %>% 
+  left_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_xxx,by=c("d"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、taxiまでの最短距離を抽出(3km以内にtaxiがなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+
+data_query_poi_mindist %>% 
+  ggplot(aes(x= (round(distance/200)*200) %>% as.factor)) + geom_bar(stat="count") + scale_y_log10()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))# + scale_y_log10()
+
+# filling_stationについて----
+data_poi_automobile_rental <- read_csv("data_set_phase1/data_poi_automobile_rental.csv")
+
+data_poi_xxx <- data_poi_automobile_rental
+
+# poiの整形----
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  separate(col = typecode,into = c("typecode","typecode2","typecode3","typecode4"),sep="\\|")
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  select(-typecode2,-typecode3,-typecode4) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode3,-typecode4) %>% rename(typecode = "typecode2")) %>%
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode4) %>% rename(typecode = "typecode3")) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode3) %>% rename(typecode = "typecode4")) %>%
+  drop_na(typecode) %>% 
+  mutate(typecode = as.numeric(typecode))
+
+data_query_poi <-
+  data_queries %>% 
+  left_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_xxx,by=c("d"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、taxiまでの最短距離を抽出(3km以内にtaxiがなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+
+data_query_poi_mindist %>% 
+  ggplot(aes(x= (round(distance/200)*200) %>% as.factor)) + geom_bar(stat="count") + scale_y_log10()
+
+data_query_poi_mindist %>% 
+  #mutate(flag_subway = (is.na(distance)|distance>=1000)) %>% 
+  mutate(flag_subway = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))# + scale_y_log10()
+
+data_poi_automobile_rental
 
 # POIの取得テスト----
 key = "1d4f000959256da7a9de1224355fd27d"

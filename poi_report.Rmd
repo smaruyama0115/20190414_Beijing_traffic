@@ -172,6 +172,71 @@ data_query_poi_mindist %>%
   theme(axis.text.x = element_text(angle=90))
 ```
 
+## バス停
+
+各sidについて、出発地点の最も近くにある地下鉄までの距離ごとに  clickされたtransport modeの内訳を確認する
+```{r}
+#data_poi_subywayの読み込み----
+data_poi_bus <- read_csv("data_set_phase1/data_poi_bus.csv")
+
+# queryとpoiの突合
+data_query_poi <-
+  data_queries %>% 
+  inner_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_bus,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、地下鉄までの最短距離を抽出(3km以内に地下鉄がなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+```
+
+- バス停までの最短距離に対するsidの数のヒストグラムを作成(対数スケール)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/100)*100) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
+```
+
+- clickの内訳をグラフ化(絶対数)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/100)*100) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+- clickの内訳をグラフ化(相対数)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(相対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/100)*100) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+
+(上：絶対数の対数をとったものをグラフ化, 下：割合をグラフ化)
+
+
+### コメント
+
+- Mode1(バス)はバス停から離れていても割とclickされる
+- Mode11(バス+自転車)はバス停から1.1km以上離れるとほぼclickされなくなる
+
 ## TODO
 
 - 特に以下についてclick_modeとの関連性を確認する。
