@@ -69,6 +69,8 @@ dat_pln = pd.read_csv('./data_set_phase1/train_plans.csv')
 dat_clk = pd.read_csv('./data_set_phase1/train_clicks.csv')
 dat_prf = pd.read_csv('./data_set_phase1/profiles.csv')
 
+test_pln = pd.read_csv('./data_set_phase1/test_plans.csv')
+
 # %% check_head
 dat_que.head()
 dat_pln.head()
@@ -114,12 +116,26 @@ dat_pln_ext.info()
 dat_pln_ext.head(10)
 
 # %% dat_pln_ext の保存
-dat_pln_ext.to_csv('./data_set_phase1/train_plans_expand.csv')
+dat_pln_ext.to_csv('./data_set_phase1/train_plans_expand.csv',index=False)
 
+# %% test_pln も同様に前処理 & csv保存
 
+test_pln.head()
 
+test_pln_ext = test_pln.copy()
+test_pln_ext['plans'] = test_pln_ext['plans'].apply(lambda x: re.findall(r'{.+?}',x))
+test_pln_ext['plans'] = test_pln_ext['plans'].apply(lambda x: list(map(ast.literal_eval,x)))
+test_pln_ext = json_normalize(test_pln_ext.to_dict("records"),"plans", ["sid","plan_time"])
+test_pln_ext['display_order'] = test_pln_ext.groupby('sid').cumcount()+1
 
+test_pln_ext = test_pln_ext[['sid','plan_time','transport_mode','distance','eta','price','display_order']]
+test_pln_ext['price'] = test_pln_ext['price'].replace('','0')
+test_pln_ext['price'] = test_pln_ext['price'].astype(int)
 
+test_pln_ext.info()
+test_pln_ext.head(10)
+
+test_pln_ext.to_csv('./data_set_phase1/test_plans_expand.csv',index=False)
 
 
 
