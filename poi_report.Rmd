@@ -169,7 +169,8 @@ data_query_poi_mindist %>%
   ggplot(aes(x=flag_subway %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
   scale_fill_brewer(palette="Paired") +
-  theme(axis.text.x = element_text(angle=90))
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
 ```
 
 ### コメント
@@ -202,7 +203,7 @@ data_query_poi_mindist <-
 ```{r}
 #各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
 data_query_poi_mindist %>% 
-  mutate(flag_bus = round(distance/100)*100) %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
   ggplot(aes(x=flag_bus %>% as.factor)) +
   geom_bar(stat="count") +
   theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
@@ -212,11 +213,12 @@ data_query_poi_mindist %>%
 ```{r}
 #各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
 data_query_poi_mindist %>% 
-  mutate(flag_bus = round(distance/100)*100) %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
   ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
   geom_bar(stat="count") +
   scale_fill_brewer(palette="Paired") +
-  theme(axis.text.x = element_text(angle=90))
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
 ```
 
 - clickの内訳をグラフ化(相対数)
@@ -227,13 +229,16 @@ data_query_poi_mindist %>%
   ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
   scale_fill_brewer(palette="Paired") +
-  theme(axis.text.x = element_text(angle=90))
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
 ```
 
 ### コメント
 
 - Mode1(バス)はバス停から離れていても割とclickされる
 - Mode11(バス+自転車)はバス停から1.1km以上離れるとほぼclickされなくなる
+- 以下で地下鉄・バス停以外のPOIも確認したが、傾向は地下鉄とほぼ同じ
+    - 都市部から郊外へ向かうにつれてclickの内訳が変わっていく傾向
 
 ## タクシー乗り場
 
@@ -258,52 +263,149 @@ data_query_poi_mindist <-
   rbind(data_query_poi %>% filter(is.na(distance)))
 ```
 
-- バス停までの最短距離に対するsidの数のヒストグラムを作成(対数スケール)
+- taxi乗り場までの最短距離に対するsidの数のヒストグラムを作成(対数スケール)
 ```{r}
 #各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
 data_query_poi_mindist %>% 
-  mutate(flag_bus = round(distance/100)*100) %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
   ggplot(aes(x=flag_bus %>% as.factor)) +
   geom_bar(stat="count") +
   theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
-```
-
-- clickの内訳をグラフ化(絶対数)
-```{r}
-#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
-data_query_poi_mindist %>% 
-  mutate(flag_bus = round(distance/100)*100) %>% 
-  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% as.factor)) +
-  geom_bar(stat="count") +
-  scale_fill_brewer(palette="Paired") +
-  theme(axis.text.x = element_text(angle=90))
 ```
 
 - clickの内訳をグラフ化(相対数)
 ```{r}
 #各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(相対数)
 data_query_poi_mindist %>% 
-  mutate(flag_bus = round(distance/100)*100) %>% 
-  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% as.factor)) +
+  mutate(flag_bus = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
   geom_bar(stat="count",position="fill") +
   scale_fill_brewer(palette="Paired") +
-  theme(axis.text.x = element_text(angle=90))
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
 ```
 
-### コメント
+## ガソリンスタンド
 
-- Mode1(バス)はバス停から離れていても割とclickされる
-- Mode11(バス+自転車)はバス停から1.1km以上離れるとほぼclickされなくなる
+```{r}
+#data_poi_filling_stationの読み込み----
+data_poi_filling_station <- read_csv("data_set_phase1/data_poi_filling_station.csv")
 
+# queryとpoiの突合
+data_poi_xxx <- data_poi_filling_station
 
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  separate(col = typecode,into = c("typecode","typecode2","typecode3","typecode4"),sep="\\|")
 
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  select(-typecode2,-typecode3,-typecode4) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode3,-typecode4) %>% rename(typecode = "typecode2")) %>%
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode4) %>% rename(typecode = "typecode3")) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode3) %>% rename(typecode = "typecode4")) %>%
+  drop_na(typecode) %>% 
+  mutate(typecode = as.numeric(typecode))
+
+data_query_poi <-
+  data_queries %>% 
+  left_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_xxx,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、地下鉄までの最短距離を抽出(3km以内に地下鉄がなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+```
+
+- filling_stationまでの最短距離に対するsidの数のヒストグラムを作成(対数スケール)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
+```
+
+- clickの内訳をグラフ化(相対数)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(相対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
+```
+
+## レンタカー
+
+```{r}
+#data_poi_automobile_rentalの読み込み----
+data_poi_automobile_rental <- read_csv("data_set_phase1/data_poi_automobile_rental.csv")
+
+# queryとpoiの突合
+data_poi_xxx <- data_poi_automobile_rental
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  separate(col = typecode,into = c("typecode","typecode2","typecode3","typecode4"),sep="\\|")
+
+data_poi_xxx <-
+  data_poi_xxx %>% 
+  select(-typecode2,-typecode3,-typecode4) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode3,-typecode4) %>% rename(typecode = "typecode2")) %>%
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode4) %>% rename(typecode = "typecode3")) %>% 
+  rbind(data_poi_xxx %>% select(-typecode ,-typecode2,-typecode3) %>% rename(typecode = "typecode4")) %>%
+  drop_na(typecode) %>% 
+  mutate(typecode = as.numeric(typecode))
+
+data_query_poi <-
+  data_queries %>% 
+  left_join(data_clicks,by="sid") %>% 
+  left_join(data_poi_xxx,by=c("o"="location")) %>% 
+  left_join(data_poicode,by=c("typecode"="subtype"))
+
+#各緯度経度に対して、地下鉄までの最短距離を抽出(3km以内に地下鉄がなければNA)
+data_query_poi_mindist <-
+  data_query_poi %>% 
+  group_by(sid) %>% 
+  slice(which.min(distance)) %>% 
+  ungroup() %>% 
+  rbind(data_query_poi %>% filter(is.na(distance)))
+```
+
+- automobile_rentalまでの最短距離に対するsidの数のヒストグラムを作成(対数スケール)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(絶対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor)) +
+  geom_bar(stat="count") +
+  theme(axis.text.x = element_text(angle=90)) + scale_y_log10()
+```
+
+- clickの内訳をグラフ化(相対数)
+```{r}
+#各sidに対し、出発地点から最も近い地下鉄までの距離別にclickの割合を確認(相対数)
+data_query_poi_mindist %>% 
+  mutate(flag_bus = round(distance/200)*200) %>% 
+  ggplot(aes(x=flag_bus %>% as.factor,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  scale_fill_brewer(palette="Paired") +
+  theme(axis.text.x = element_text(angle=90)) +
+  guides(fill=guide_legend(title=NULL))
+```
 
 
 ## TODO
 
-- 特に以下についてclick_modeとの関連性を確認する。
-    - Auto Service(Filling Station, Automobile Rentalなど)
-    - Transportation Service(Taxi, Bus Stationなど)
 - その他POIについても、API Keyあたりの呼び出し可能範囲内で確認していきたい。
 - (別件ですが) シェアサイクル(Mobike)の設置位置を呼び出せるAPIがあったため、  
 自転車の分布とclicksに関連性があるかを確認したい。
