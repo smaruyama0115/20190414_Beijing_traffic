@@ -364,6 +364,8 @@ g_bigcat_trans + g_all + plot_layout(ncol=1,heights = c(10,1))
 
 # いろいろ見ているうちにPOIの取得が良くないことに気づいたので、poytype別にAPIを叩くことに変更----
 
+data_poi_subway <- read_csv("data_set_phase1/data_poi_subway.csv")
+
 #data_poi_subywayの読み込み----
 data_poi_bus <- read_csv("data_set_phase1/data_poi_bus.csv")
 
@@ -559,7 +561,49 @@ data_query_poi_mindist %>%
 
 data_poi_automobile_rental
 
-# POIの取得テスト----
+# POIの整形(1km以内にあるPOIの集計)----
+data_poi_subway_count <-
+  read_csv("data_set_phase1/data_poi_subway.csv") %>% 
+  filter(distance <= 1000) %>% 
+  group_by(location) %>% 
+  summarize(count_suwbay = n())
+
+data_poi_bus_count <-
+  read_csv("data_set_phase1/data_poi_bus.csv") %>% 
+  filter(distance <= 1000) %>% 
+  group_by(location) %>% 
+  summarize(count_bus = n())
+
+data_poi_taxi_count <-
+  read_csv("data_set_phase1/data_poi_taxi.csv") %>% 
+  filter(distance <= 1000) %>% 
+  group_by(location) %>% 
+  summarize(count_taxi = n())
+
+data_poi_filling_station_count <-
+  read_csv("data_set_phase1/data_poi_filling_station.csv") %>% 
+  filter(distance <= 1000) %>% 
+  group_by(location) %>% 
+  summarize(count_filling_station = n())
+
+data_poi_automobile_rental_count <-
+  read_csv("data_set_phase1/data_poi_automobile_rental.csv") %>% 
+  filter(distance <= 1000) %>% 
+  group_by(location) %>% 
+  summarize(count_automobile_rental = n())
+
+data_poi_count <-
+  data_poi_subway_count %>% 
+  full_join(data_poi_bus_count,by="location") %>% 
+  full_join(data_poi_taxi_count,by="location") %>% 
+  full_join(data_poi_filling_station_count,by="location") %>% 
+  full_join(data_poi_automobile_rental_count,by="location") %>% 
+  mutate_at(.vars = vars(starts_with("count_")), .funs = ~replace_na(.,0))
+
+data_poi_count %>% write_csv(path = "data_set_phase1/data_poi_count.csv")
+
+
+”# POIの取得テスト----
 key = "1d4f000959256da7a9de1224355fd27d"
 location = "116.473168,39.993015"
 #location = "100.0,45.0"
