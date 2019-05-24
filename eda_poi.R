@@ -82,15 +82,18 @@ prior_package(dplyr)
 
 # queryの緯度経度情報を取得
 data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
+test_queries <- fread("data_set_phase1/test_queries.csv", stringsAsFactors=FALSE, sep=",")
 
 data_o <-
   data_queries %>% 
+  union_all(test_queries) %>% 
   select(o) %>% 
   distinct() %>% 
   rename(location = o)
 
 data_d <-
   data_queries %>% 
+  union_all(test_queries) %>% 
   select(d) %>% 
   distinct() %>% 
   rename(location = d)
@@ -107,6 +110,8 @@ data_poi_bus = data.frame()
 data_poi_taxi = data.frame()
 data_poi_automobile_rental = data.frame()
 data_poi_filling_station = data.frame()
+data_poi_filling_station = data.frame()
+data_poi_airport = data.frame()
 
 url = "https://restapi.amap.com/v3/place/around"
 key = list(
@@ -121,8 +126,6 @@ key = list(
   ,"4a7ed472754634489f91520f33c90dc3"
   ,"0012b2712d23f646f338c95ad48de407"
 )
-
-
 
 # key = list(
 #    "e3c0c211113be0d3eda10b7a3ad8846c"
@@ -141,8 +144,9 @@ key = list(
 #types  = "150500" # subway
 #types = "150700" # Bus Station
 #types = "151100" # Taxi
-types = "010900" # Automobile Rental
+#types = "010900" # Automobile Rental
 #types = "010100" # filling station
+types = "150100" # aieport
 radius = "3000"
 offset = "24"
 key_reset_th = 1900
@@ -154,6 +158,7 @@ count = 1
 key_index = 1
 
 for(i in 1:max_length){
+#for(i in c(229,3629,3641,3904,3917)){
   count = count + 1
   tmp_key = key[[key_index]]
   if(count > key_reset_th){
@@ -190,7 +195,7 @@ for(i in 1:max_length){
         name     = result$pois %>% map_chr(~.$name),
         id       = result$pois %>% map_chr(~.$id)
       )
-    data_poi_automobile_rental %<>% rbind(data_poi_tmp)
+    data_poi_airport %<>% rbind(data_poi_tmp)
   }
   Sys.sleep(0.1)
 }
@@ -205,6 +210,8 @@ data_poi_bus %>% tail(10)
 data_poi_filling_station %>% tail(10)
 data_poi_automobile_rental %>% tail(10)
 
+data_poi_airport
+
 #data_poi の保存
 #data_poi %>% write_csv(path = "data_set_phase1/data_poi.csv")
 #data_poi_subway %>% write_csv(path = "data_set_phase1/data_poi_subway.csv")
@@ -212,6 +219,7 @@ data_poi_automobile_rental %>% tail(10)
 #data_poi_taxi %>% write_csv(path = "data_set_phase1/data_poi_taxi.csv")
 #data_poi_filling_station %>% write_csv(path = "data_set_phase1/data_poi_filling_station.csv")
 #data_poi_automobile_rental %>% write_csv(path = "data_set_phase1/data_poi_automobile_rental.csv")
+data_poi_airport %>% write_csv(path = "data_set_phase1/data_poi_airport.csv")
 
 #data_poiの読み込み
 data_poi <- read_csv("data_set_phase1/data_poi_subway.csv")
@@ -603,7 +611,7 @@ data_poi_count <-
 data_poi_count %>% write_csv(path = "data_set_phase1/data_poi_count.csv")
 
 
-”# POIの取得テスト----
+# POIの取得テスト----
 key = "1d4f000959256da7a9de1224355fd27d"
 location = "116.473168,39.993015"
 #location = "100.0,45.0"
