@@ -134,12 +134,142 @@ for(i in 1:max_length){
   }
 }
 
+data_mobike_distinct <-
+  data_mobike %>% 
+  group_by(bikeIds) %>% 
+  filter(row_number() == 1) %>% 
+  ungroup()  
+
+data_mobike_distinct %>% nrow()
+
 data_mobike %>% tail(10)
+
+data_mobike %>% select(bikeIds) %>% distinct() %>% nrow()
+data_mobike %>% select(bikeIds) %>% nrow()
 
 data_mobike
 data_location2$lng[[1]]
+
 # 取得したmobikeデータの保存----
-data_mobike %>% write_csv(path = "data_set_phase1/data_mobike.csv")
+#data_mobike %>% write_csv(path = "data_set_phase1/data_mobike.csv")
+#data_mobike_distinct %>% write_csv(path = "data_set_phase1/data_mobike_distinct.csv")
+
+data_mobike_distinct <- fread("data_set_phase1/data_mobike_distinct.csv", stringsAsFactors=FALSE, sep=",")
+
+# データのsummary ----
+data_mobike_distinct %>% summary()
+data_mobike_distinct$biketype %>% table
+data_mobike_distinct$operateType %>% table
+
+# mobikeの情報をメッシュにまとめる----
+data_mobike_distinct2 <-
+  data_mobike_distinct %>% 
+  group_by(origin_lng,origin_lat) %>% 
+  summarize(count_mobike=n()) %>% 
+  ungroup() %>%
+  mutate(
+    origin_lng = format(origin_lng,nsmall=2),
+    origin_lat = format(origin_lat,nsmall=2)
+  ) %>% 
+  unite(col = "location", c("origin_lng","origin_lat"), sep = ",") # %>% 
+#  mutate(log10_count = log10(count))
+
+data_mobike_distinct2 %>% write_csv(path = "data_set_phase1/data_mobike_clean.csv")
+
+# data_mobike_distinct2 %>% esquisser
+
+# 自転車のカウント数をメッシュで地図上に表示----
+# (都会の方が多いということぐらいしかわからない)
+pal <- colorNumeric(palette="Spectral", domain=data_mobike_distinct2$count, reverse=TRUE)
+
+map <-
+  leaflet() %>% 
+  addTiles() %>% 
+  addCircles(lng=data_mobike_distinct2$origin_lng ,lat=data_mobike_distinct2$origin_lat,color=pal(data_mobike_distinct2$count),radius=500,stroke=FALSE,fillOpacity = 0.6,group="o") %>% 
+  addLegend(position='topright', pal=pal, values=data_mobike_distinct2$count) %>% 
+  addScaleBar(position="bottomleft",options = scaleBarOptions(imperial=FALSE))
+
+map
+
+# mobikeの数とclick_rateについての関係を確認----
+data_queries <- fread("data_set_phase1/train_queries.csv", stringsAsFactors=FALSE, sep=",")
+data_clicks  <- fread("data_set_phase1/train_clicks.csv", stringsAsFactors=FALSE, sep=",")
+data_poi_count <- fread("data_set_phase1/data_poi_count.csv", stringsAsFactors=FALSE, sep=",")
+
+data_queries
+data_clicks
+data_poi_count
+
+data_queries2 <-
+  data_queries %>%
+  left_join(data_poi_count,by=c("o"="location")) %>% 
+  #separate(col=o,into=c("o_lng","o_lat"),sep=",",convert = TRUE) %>% 
+  left_join(data_clicks,by="sid") %>% 
+  #left_join(data_mobike_distinct2,by=c("o_lng" = "origin_lng","o_lat"="origin_lat")) %>% 
+  left_join(data_mobike_distinct2,by=c("o"="location")) %>% 
+  mutate(count=ifelse(is.na(count),0,count))
+
+data_queries2 %>% 
+  ggplot(aes(x=count)) +
+  geom_histogram()
+
+# countごとclickの内訳(自転車が多いと地下鉄利用者が多い(都市部のため))----
+data_queries2 %>%
+  mutate(count = floor(count/20)*20) %>%
+  mutate(click_mode = click_mode %>% as.factor) %>% 
+  group_by(count,click_mode) %>% 
+  summarize(click_count = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=count,y=click_count,fill=click_mode)) +
+  geom_bar(stat="identity",position="fill")
+
+# 地下鉄吸うとcountの関係----
+data_queries2 %>% 
+  ggplot(aes(x=count,y=count_suwbay)) +
+  geom_point()
+
+# count_subway <= 3 のエリアに対して、自転車の数ごとのclickの割合を比較----
+data_queries2 %>%
+  filter(count_suwbay <= 2) %>% 
+  mutate(count = floor(count/5)*5) %>%
+  #mutate(count = ifelse(count<=50,0,1)) %>%
+  mutate(click_mode = click_mode %>% as.factor) %>% 
+  group_by(count,click_mode,count_suwbay) %>% 
+  summarize(click_count = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=count,y=click_count,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="identity",position="fill") +
+  facet_grid(count_suwbay ~ .) +
+  scale_fill_brewer(palette="Paired")
+
+data_queries2$count %>% table
+
+data_queries2  
+
+data_queries
+
+# # 目的地の緯度経度ごとのカウント数
+# data_queries_o <-
+#   data_queries %>% 
+#   group_by(o) %>% 
+#   summarise(count=n()) %>%
+#   ungroup() %>% 
+#   arrange(desc(count)) %>% 
+#   separate(col=o,into=c("lng","lat"),sep=",") %>% 
+#   mutate(lng=lng %>% as.numeric,lat=lat %>% as.numeric) %>% 
+#   mutate(log10_count = log10(count))
+# 
+# #カウント別カラー用のパレットの作成
+# pal_o <- colorNumeric(palette="Spectral", domain=data_queries_o$log10_count, reverse=TRUE)
+# 
+# # 地図の作成
+# map_o <-
+#   map_d %>% 
+#   addTiles() %>% 
+#   addCircles(lng=data_queries_o$lng,lat=data_queries_o$lat,color=pal_o(data_queries_o$log10_count),radius=500,stroke=FALSE,fillOpacity = 0.6,group="o") %>% 
+#   addLegend(position='topright', pal=pal_o, values=data_queries_o$log10_count,group = "o") %>% 
+#   addScaleBar(position="bottomleft",options = scaleBarOptions(imperial=FALSE)) %>% 
+#   addLayersControl(baseGroups=c("o","d"), options=layersControlOptions(collapsed = FALSE))
 
 # バイクを地図上に表示----
 
@@ -230,6 +360,6 @@ if(result_con$bike %>% map_chr(~.$distId) %>% length != 0){
 
 seq(from=-0.004, to=0.004, by=0.002)
 data_mobike %>% map(class)
-
+, to=0.004, by=0.002)
 
 

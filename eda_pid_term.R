@@ -375,6 +375,105 @@ test_queries_11 %>%
   select(sid,next_req_time,flag_same_o,flag_same_d,next_o_dist,next_d_dist) %>% 
   write_csv(path = "data_set_phase1/test_next_req_time_r3.csv")
 
+data_plans
+
+data_clicks
+
+data_plans %>%
+  group_by(sid) %>% 
+  summarize(count_sid = n()) %>%
+  ungroup() %>%
+  left_join(data_clicks,by="sid") %>% 
+  group_by(count_sid,click_mode) %>% 
+  summarize(count_clicks = n()) %>% 
+  ungroup() %>% 
+  ggplot(aes(x=count_sid,y=count_clicks,fill=click_mode %>% ifelse(is.na(.),0,.) %>% as.factor)) +
+  geom_bar(stat="identity",position="fill") +
+  scale_fill_brewer(palette="Paired")
+
+data_plans %>% 
+  group_by(sid)
+
+data_plans2 <-
+  data_plans %>% 
+  group_by(sid,transport_mode) %>%
+  summarize(count=n()) %>% 
+  ungroup() #%>% 
+  #filter(transport_mode %in% c(1,2,7))
+
+data_clicks2 <-
+  data_clicks %>% 
+  select(sid,click_mode) %>% 
+  mutate(flag_click = 1)
+
+data_plans2 %>% 
+  left_join(data_clicks2,by=c("sid","transport_mode"="click_mode")) %>% 
+  ggplot(aes(x=count,fill=flag_click %>% as.factor)) +
+  geom_bar(stat="count",position="fill") +
+  facet_grid(transport_mode ~ .)
+
+data_plans2$count %>% table
+
+data_plans3 <-
+  data_plans2 %>% 
+  spread(key = transport_mode,value=count) %>%
+  mutate(
+    flag_mode1_double = ifelse(`1`==2,1,0),
+    flag_mode2_double = ifelse(`2`==2,1,0),
+    flag_mode7_double = ifelse(`7`==2,1,0),
+  ) %>% 
+  replace_na(
+    list(
+      flag_mode1_double = 0,
+      flag_mode2_double = 0,
+      flag_mode7_double = 0
+    )
+  ) %>% 
+  select(sid,starts_with("flag"))
+
+test_plans <- fread("data_set_phase1/test_plans_r2.csv", stringsAsFactors=FALSE, sep=",")
+
+test_plans2 <-
+  test_plans %>% 
+  group_by(sid,transport_mode) %>%
+  summarize(count=n()) %>% 
+  ungroup()
+
+test_plans3 <-
+  test_plans2 %>% 
+  spread(key = transport_mode,value=count) %>%
+  mutate(
+    flag_mode1_double = ifelse(`1`==2,1,0),
+    flag_mode2_double = ifelse(`2`==2,1,0),
+    flag_mode7_double = ifelse(`7`==2,1,0),
+  ) %>% 
+  replace_na(
+    list(
+      flag_mode1_double = 0,
+      flag_mode2_double = 0,
+      flag_mode7_double = 0
+    )
+  ) %>% 
+  select(sid,starts_with("flag"))
+
+data_plans3 %>% summary
+test_plans3 %>% summary()
+
+data_plans3 %>% write_csv(path = "data_set_phase1/train_flag_double.csv")
+test_plans3 %>% write_csv(path = "data_set_phase1/test_flag_double.csv")  
+  
+?replace_na
+
+
+
+
+
+
+
+
+
+
+
 
 
 

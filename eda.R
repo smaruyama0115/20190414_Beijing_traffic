@@ -54,15 +54,15 @@ prior_package <- function(pkg_name) {
 
 prior_package(dplyr)
 
-# データの読み込み----
-
-# ユーザー特徴
-data_profiles <- read_csv("data_set_phase1/profiles.csv")
-data_profiles %>% head(100) %>% print
-#data_profiles %>% create_report(output_file = "data_profiles_report.html", output_dir = "create_report")
-
-# #レコメンド一覧
-#data_plans <- read_csv("data_set_phase1/train_plans.csv")
+# # データの読み込み----
+# 
+# # ユーザー特徴
+# data_profiles <- read_csv("data_set_phase1/profiles.csv")
+# data_profiles %>% head(100) %>% print
+# #data_profiles %>% create_report(output_file = "data_profiles_report.html", output_dir = "create_report")
+# 
+# # #レコメンド一覧
+# data_plans <- read_csv("data_set_phase1/train_plans.csv")
 # 
 # #test <- data_plans %>% head(100)
 # #test %>% names
@@ -77,16 +77,41 @@ data_profiles %>% head(100) %>% print
 #   pmap(
 #     .l = list(distance,price,eta,transport_mode),
 #     .f = ~data.frame(distance = ..1, price = ..2, eta = ..3, transport_mode = ..4)
-#   ) %>% 
+#   ) %>%
 #   map(~mutate(.,order = row_number()))
 # 
 # data_plans %<>%
-#   select(-plans) %>% 
-#   mutate(plan = df_plans) %>% 
+#   select(-plans) %>%
+#   mutate(plan = df_plans) %>%
+#   unnest(plan)
+# 
+# # test_plansも同様に処理----
+# test_plans <- read_csv("data_set_phase1/test_plans.csv")
+# 
+# #test <- data_plans %>% head(100)
+# #test %>% names
+# #test %>% print
+# 
+# distance       <- test_plans$plans %>% str_extract_all("\"distance\":\\s\\d*")       %>% map(~str_remove(.,"\"distance\":\\s"))       %>% map(as.integer)
+# price          <- test_plans$plans %>% str_extract_all("\"price\":\\s\\d*")          %>% map(~str_remove(.,"\"price\":\\s"))          %>% map(as.integer)
+# eta            <- test_plans$plans %>% str_extract_all("\"eta\":\\s\\d*")            %>% map(~str_remove(.,"\"eta\":\\s"))            %>% map(as.integer)
+# transport_mode <- test_plans$plans %>% str_extract_all("\"transport_mode\":\\s\\d*") %>% map(~str_remove(.,"\"transport_mode\":\\s")) %>% map(as.integer)
+# 
+# df_plans<-
+#   pmap(
+#     .l = list(distance,price,eta,transport_mode),
+#     .f = ~data.frame(distance = ..1, price = ..2, eta = ..3, transport_mode = ..4)
+#   ) %>%
+#   map(~mutate(.,order = row_number()))
+# 
+# test_plans %<>%
+#   select(-plans) %>%
+#   mutate(plan = df_plans) %>%
 #   unnest(plan)
 
 # 前処理が重かったので念の為保存しておく
-#data_plans %>% write_csv(path = "data_set_phase1/train_plans_r2.csv")
+# data_plans %>% write_csv(path = "data_set_phase1/train_plans_r2.csv")
+# test_plans %>% write_csv(path = "data_set_phase1/test_plans_r2.csv")
 
 # plans,clicksの読み込み----
 data_plans_before <- fread("data_set_phase1/train_plans.csv", stringsAsFactors=FALSE, sep=",")
